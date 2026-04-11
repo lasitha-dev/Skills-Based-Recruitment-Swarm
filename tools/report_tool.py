@@ -1,0 +1,1 @@
+"""ReportGeneratorTool placeholder."""

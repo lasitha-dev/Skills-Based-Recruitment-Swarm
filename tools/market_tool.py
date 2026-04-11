@@ -1,0 +1,1 @@
+"""SalaryBenchmarkTool placeholder."""
