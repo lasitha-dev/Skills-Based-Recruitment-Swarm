@@ -36,7 +36,7 @@ This repository is organized to ensure individual contribution proof and modular
 ├── /tools                # Custom Python Tools with type hinting 
 │   ├── resume_tool.py
 │   ├── market_tool.py
-│   ├── question_tool.py  # Evaluator tool for local question bank
+│   ├── question_tool.py 
 │   └── report_tool.py
 ├── /data                 # Local data storage for zero-cost operation
 │   ├── resume_samples/   # Local PDFs for ingestion
@@ -47,3 +47,100 @@ This repository is organized to ensure individual contribution proof and modular
 ├── main_graph.py         # LangGraph Orchestrator and State definitions 
 ├── requirements.txt      # Project dependencies
 └── README.md             # Project documentation
+```
+
+## 🚀 Setup & Installation Guide
+
+Follow these steps to set up and run the project on your local machine.
+
+---
+
+### 1️⃣ Prerequisites
+
+Ensure you have the following installed:
+
+- **Python 3.9+** – Required to run the application.  
+  🔗 https://www.python.org/downloads/
+
+- **Ollama** – Essential for running the LLM locally.  
+  🔗 https://ollama.com/
+
+- **Git** – Required for cloning the repository.  
+  🔗 https://git-scm.com/downloads
+
+You can verify the installations using:
+
+```bash
+python --version
+git --version
+ollama --version
+
+```
+## 2️⃣ Prepare the LLM Engine
+
+Open your terminal and pull the models required for the agents:
+
+```bash
+# Pull the primary model
+ollama pull llama3:8b
+
+# Optional: Pull a smaller model for faster testing on lower hardware
+ollama pull phi3
+
+```
+
+## 3️⃣ Repository and Environment Setup
+
+Clone the project and create a virtual environment to manage dependencies.
+
+```bash
+# Clone the repository
+git clone <your-repository-url>
+cd recruitment-swarm
+
+# Create a virtual environment
+python -m venv venv
+```
+🔹 Activate the Virtual Environment
+
+```bash
+# On Windows
+venv\Scripts\activate
+```
+```bash
+# On macOS/Linux
+source venv/bin/activate
+```
+🔹 Install Required Packages
+
+```bash
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+## 4️⃣ Configure Local Data
+
+Ensure your local data files are in place so the agents can use their tools:
+
+📄 Place sample resumes (PDF/DOCX) in:
+```bash
+/data/resume_samples/
+```
+📋 Ensure the following file contains a valid list of interview questions:
+```bash
+/data/tech_questions.json
+```
+
+## 5️⃣ Running the Swarm
+Once the environment is ready and Ollama is serving the models, run the main orchestration script:
+```bash
+python main_graph.py
+```
+
+## 6️⃣ Running Tests
+
+To verify that individual components and tools are working correctly:
+```bash
+# Run the full test suite
+python -m pytest tests/
+```
