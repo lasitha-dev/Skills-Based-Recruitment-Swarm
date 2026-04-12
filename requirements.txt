@@ -1,1 +1,2 @@
-# Project dependencies placeholder
+langgraph>=1.1.6
+pytest>=9.0.0
