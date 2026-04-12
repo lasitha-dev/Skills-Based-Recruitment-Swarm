@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from agents.evaluator_agent import evaluate_candidate
 from tools.question_tool import QuestionBankError, QuestionBankTool
 
 
@@ -72,4 +73,54 @@ def test_invalid_schema_raises_controlled_error(tmp_path: Path) -> None:
 
 	with pytest.raises(QuestionBankError, match="Invalid question record"):
 		tool.load_question_bank()
+
+
+def test_evaluator_generates_gap_report_and_questions() -> None:
+	"""Evaluator should detect gaps and fetch targeted medium questions."""
+	tool = QuestionBankTool(_default_question_bank_path())
+	state = {
+		"job_description": "Need strong Python, AWS and SQL experience for backend platform work.",
+		"found_skills": ["Python"],
+	}
+
+	update = evaluate_candidate(state=state, question_tool=tool, top_k=5)
+
+	assert "skill_gaps" in update
+	assert "evaluation_questions" in update
+	assert "evaluation_summary" in update
+	assert "python" in update["skill_gaps"]["matched_skills"]
+	assert "aws" in update["skill_gaps"]["missing_skills"]
+	assert "sql" in update["skill_gaps"]["missing_skills"]
+	assert len(update["evaluation_questions"]) > 0
+
+
+def test_evaluator_returns_empty_questions_when_no_missing_skills() -> None:
+	"""Evaluator should not fetch questions when candidate matches all required skills."""
+	tool = QuestionBankTool(_default_question_bank_path())
+	state = {
+		"required_skills": ["python", "aws"],
+		"found_skills": ["python", "aws"],
+	}
+
+	update = evaluate_candidate(state=state, question_tool=tool, top_k=5)
+
+	assert update["skill_gaps"]["missing_skills"] == []
+	assert update["evaluation_questions"] == []
+
+
+def test_evaluator_returns_controlled_error_for_bad_question_bank(tmp_path: Path) -> None:
+	"""Evaluator should return structured error output if question bank is invalid."""
+	bad_path = tmp_path / "bad_questions.json"
+	bad_path.write_text("{not-json}", encoding="utf-8")
+	tool = QuestionBankTool(bad_path)
+	state = {
+		"required_skills": ["python"],
+		"found_skills": [],
+	}
+
+	update = evaluate_candidate(state=state, question_tool=tool, top_k=5)
+
+	assert update["evaluation_questions"] == []
+	assert "evaluation_errors" in update
+	assert len(update["evaluation_errors"]) == 1
 
