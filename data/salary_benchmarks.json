@@ -1,0 +1,7 @@
+{
+    "Python": {"salary_range": [70000, 120000], "average": 95000, "demand": "high"},
+    "Java": {"salary_range": [65000, 115000], "average": 90000, "demand": "high"},
+    "JavaScript": {"salary_range": [60000, 110000], "average": 85000, "demand": "high"},
+    "Go": {"salary_range": [80000, 130000], "average": 105000, "demand": "emerging"},
+    "Cobol": {"salary_range": [50000, 80000], "average": 65000, "demand": "low"}
+}
