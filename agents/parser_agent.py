@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 from typing import Any, TypedDict
 
@@ -14,6 +15,7 @@ from tools.resume_tool import resume_reader_tool
 
 
 LOGGER = logging.getLogger(__name__)
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3:8b")
 
 
 SYSTEM_PROMPT = """
@@ -169,20 +171,20 @@ def profile_parser_node(state: GraphState) -> dict[str, Any]:
 		return {"error": str(error), "logs": logs}
 
 	logs.append("[ProfileParser] Resume text extracted successfully.")
-	llm = ChatOllama(model="llama3")
+	llm = ChatOllama(model=OLLAMA_MODEL)
 	user_prompt = (
 		"Extract candidate_name, skills, and years_of_experience from this resume text:\n\n"
 		f"{resume_text}"
 	)
-	response = llm.invoke([SystemMessage(content=SYSTEM_PROMPT), HumanMessage(content=user_prompt)])
 
 	profile: ProfileData
 	try:
+		response = llm.invoke([SystemMessage(content=SYSTEM_PROMPT), HumanMessage(content=user_prompt)])
 		parsed = _extract_json_object(str(response.content))
 		profile = _normalize_profile(parsed)
-		logs.append("[ProfileParser] Parsed structured profile using llama3.")
+		logs.append(f"[ProfileParser] Parsed structured profile using {OLLAMA_MODEL}.")
 	except Exception as error:  # pragma: no cover - defensive path
-		logs.append(f"[ProfileParser] LLM JSON parse fallback used: {error}")
+		logs.append(f"[ProfileParser] LLM unavailable/invalid output; fallback used: {error}")
 		profile = _fallback_parse(resume_text)
 
 	return {

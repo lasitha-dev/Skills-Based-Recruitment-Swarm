@@ -4,13 +4,22 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+from pathlib import Path
 import sys
 from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_ollama import ChatOllama
 
+ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
 from main_graph import run_parser
+
+
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3:8b")
 
 
 JUDGE_SYSTEM_PROMPT = """
@@ -54,7 +63,7 @@ def run_judge(file_path: str) -> int:
         print(json.dumps({"verdict": "FAIL", "score": 0, "reasons": schema_reasons}, indent=2))
         return 1
 
-    judge_model = ChatOllama(model="llama3")
+    judge_model = ChatOllama(model=OLLAMA_MODEL)
     judge_input = {
         "resume_text": result.get("resume_text", ""),
         "profile_data": profile_data,
