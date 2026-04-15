@@ -9,6 +9,7 @@ output is placed in the shared AgentState for Agent 3 (Tech Evaluator).
 
 import json
 import logging
+import os
 from typing import Dict, Any, List
 
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -18,6 +19,7 @@ from agents.state import AgentState
 from tools.market_tool import salary_benchmark_tool
 
 logger = logging.getLogger(__name__)
+OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "phi3")
 
 # ── Market Scout system prompt (defines the agent persona) ──────────────────
 MARKET_SCOUT_SYSTEM_PROMPT: str = """You are the Market Scout agent in a multi-agent recruitment system.
@@ -53,7 +55,7 @@ def _invoke_llm_analysis(
     market_data: Dict[str, Any],
     skills: List[str]
 ) -> Dict[str, Any]:
-    """Invoke ChatOllama (phi3) to perform chain-of-thought trend analysis.
+    """Invoke ChatOllama to perform chain-of-thought trend analysis.
 
     Sends the raw salary benchmark data to the local LLM and asks it to
     reason about trends, market position, and provide structured insights.
@@ -71,7 +73,7 @@ def _invoke_llm_analysis(
         Exception: If the LLM invocation fails or returns unparseable output.
     """
     llm = ChatOllama(
-        model="phi3",
+        model=OLLAMA_MODEL,
         temperature=0.3,
         base_url="http://localhost:11434"
     )
@@ -85,7 +87,7 @@ Salary benchmark data:
 
 Provide your analysis as a JSON object following the exact format specified in your instructions."""
 
-    logger.info("[MarketScout] Sending data to phi3 LLM for analysis...")
+    logger.info("[MarketScout] Sending data to %s LLM for analysis...", OLLAMA_MODEL)
     logger.info("[MarketScout] LLM Input — Skills: %s", skills)
 
     messages = [
@@ -151,7 +153,7 @@ def market_scout_agent(state: AgentState) -> AgentState:
     This agent performs three steps:
     1. Reads skills from the shared state (produced by Agent 1).
     2. Fetches salary benchmarks using the SalaryBenchmarkTool (local JSON lookup).
-    3. Invokes ChatOllama (phi3) for chain-of-thought trend analysis.
+    3. Invokes ChatOllama for chain-of-thought trend analysis.
 
     The output is structured as JSON so Agent 3 (Tech Evaluator) can parse it.
 
@@ -220,11 +222,11 @@ def market_scout_agent(state: AgentState) -> AgentState:
         logs.append(f"[MarketScout] Skill '{skill}' classified as '{trend}' (demand: {demand})")
         logger.info("[MarketScout] %s -> %s", skill, trend)
 
-    # ── Step 4: LLM Chain-of-Thought Analysis (ChatOllama phi3) ─────────────
+    # ── Step 4: LLM Chain-of-Thought Analysis (ChatOllama) ──────────────────
     llm_analysis: Dict[str, Any] = {}
     try:
         llm_analysis = _invoke_llm_analysis(benchmark_data, skills)
-        logs.append("[MarketScout] LLM (phi3) analysis complete.")
+        logs.append(f"[MarketScout] LLM ({OLLAMA_MODEL}) analysis complete.")
         logs.append(f"[MarketScout] LLM reasoning: {llm_analysis.get('reasoning', 'N/A')}")
         logger.info("[MarketScout] LLM analysis completed successfully.")
     except Exception as e:

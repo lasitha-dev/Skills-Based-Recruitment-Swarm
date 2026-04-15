@@ -14,6 +14,7 @@ Usage:
 
 import json
 import logging
+import os
 import sys
 from typing import Dict, Any
 
@@ -32,6 +33,7 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger(__name__)
+OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "phi3")
 
 # ── Judge system prompt ─────────────────────────────────────────────────────
 
@@ -65,7 +67,7 @@ def run_ollama_judge(
     input_skills: list,
     persona: str = "Market Scout"
 ) -> Dict[str, Any]:
-    """Call ChatOllama (phi3) to judge the output of Agent 2.
+    """Call ChatOllama to judge the output of Agent 2.
 
     Uses a separate LLM invocation to independently evaluate whether
     Agent 2's output meets quality criteria for accuracy, structure,
@@ -84,7 +86,7 @@ def run_ollama_judge(
         Exception: If the LLM invocation fails.
     """
     llm = ChatOllama(
-        model="phi3",
+        model=OLLAMA_MODEL,
         temperature=0.2,
         base_url="http://localhost:11434"
     )
@@ -98,7 +100,7 @@ AGENT OUTPUT (JSON):
 
 Assess this output against all criteria and provide your verdict as JSON."""
 
-    logger.info("[LLM-Judge] Sending agent output to phi3 for evaluation...")
+    logger.info("[LLM-Judge] Sending agent output to %s for evaluation...", OLLAMA_MODEL)
 
     messages = [
         SystemMessage(content=JUDGE_SYSTEM_PROMPT),

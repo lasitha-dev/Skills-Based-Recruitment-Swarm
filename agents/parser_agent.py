@@ -16,7 +16,7 @@ from agents.state import AgentState
 from tools.resume_tool import resume_reader_tool
 
 LOGGER = logging.getLogger(__name__)
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3:8b")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "phi3")
 
 SYSTEM_PROMPT = """
 You are Profile Parser, Agent 1 in a local recruitment swarm.
