@@ -12,6 +12,8 @@ class AgentState(TypedDict, total=False):
     """Shared state passed between all agents in the MARS pipeline.
 
     Attributes:
+        resume_file_path: Optional local path to a resume file for Agent 1 parsing.
+        resume_text: Raw extracted resume text from Agent 1.
         candidate_name: Name of the candidate being evaluated.
         found_skills: Skills extracted by Agent 1 (Profile Parser).
         structured_profile: Full structured profile from Agent 1.
@@ -21,6 +23,8 @@ class AgentState(TypedDict, total=False):
         final_report: Final recruitment report from Agent 4 (Recruitment Lead).
         logs: Log entries for observability and debugging across all agents.
     """
+    resume_file_path: Optional[str]
+    resume_text: Optional[str]
     candidate_name: Optional[str]
     found_skills: List[str]
     structured_profile: Optional[Dict[str, Any]]

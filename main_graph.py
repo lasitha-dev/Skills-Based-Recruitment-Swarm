@@ -15,6 +15,7 @@ from typing import Dict, Any
 from langgraph.graph import StateGraph, START, END
 
 from agents.state import AgentState
+from agents.parser_agent import profile_parser_agent, GraphState, profile_parser_node
 from agents.market_agent import market_scout_agent
 
 import sys
@@ -30,24 +31,6 @@ logger = logging.getLogger(__name__)
 
 
 # ── Stub nodes for agents not yet implemented by teammates ──────────────────
-
-def profile_parser_stub(state: AgentState) -> AgentState:
-    """Stub for Agent 1 (Profile Parser) — placeholder until teammate integrates.
-
-    In the real system, this agent would parse a resume and extract skills.
-    For now, it passes through the state unchanged (skills must be pre-populated).
-
-    Args:
-        state: The shared AgentState.
-
-    Returns:
-        The state unchanged (skills should already be in found_skills).
-    """
-    logs = list(state.get("logs", []))
-    logs.append("[ProfileParser] (STUB) Agent 1 placeholder — passing through.")
-    logger.info("[ProfileParser] (STUB) Passing through. Skills in state: %s",
-                state.get("found_skills", []))
-    return {**state, "logs": logs}
 
 
 def tech_evaluator_stub(state: AgentState) -> AgentState:
@@ -100,7 +83,7 @@ def build_mars_graph() -> StateGraph:
     graph = StateGraph(AgentState)
 
     # Add agent nodes
-    graph.add_node("profile_parser", profile_parser_stub)
+    graph.add_node("profile_parser", profile_parser_agent)
     graph.add_node("market_scout", market_scout_agent)
     graph.add_node("tech_evaluator", tech_evaluator_stub)
     graph.add_node("recruitment_lead", recruitment_lead_stub)
@@ -116,6 +99,23 @@ def build_mars_graph() -> StateGraph:
                 "-> tech_evaluator -> recruitment_lead -> END")
 
     return graph.compile()
+
+
+def run_parser(file_path: str) -> GraphState:
+    """Run Agent 1 parser standalone for direct validation scripts.
+
+    Args:
+        file_path: Path to a local resume file.
+
+    Returns:
+        GraphState output produced by Agent 1 parser node.
+    """
+    parser_graph = StateGraph(GraphState)
+    parser_graph.add_node("profile_parser", profile_parser_node)
+    parser_graph.add_edge(START, "profile_parser")
+    parser_graph.add_edge("profile_parser", END)
+    app = parser_graph.compile()
+    return app.invoke({"file_path": file_path, "logs": []})
 
 
 def run_mars_pipeline(initial_state: AgentState) -> AgentState:
@@ -154,7 +154,7 @@ def run_mars_pipeline(initial_state: AgentState) -> AgentState:
 
 
 if __name__ == "__main__":
-    # Example: run pipeline with test data simulating Agent 1 output
+    # Example: run pipeline with test data (or pre-populated skills if no resume path)
     test_state: AgentState = {
         "candidate_name": "John Doe",
         "found_skills": ["Python", "Docker", "Machine Learning", "React", "Cobol"],
