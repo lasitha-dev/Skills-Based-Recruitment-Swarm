@@ -35,24 +35,41 @@ class TestSalaryBenchmarkTool(unittest.TestCase):
         self.assertEqual(len(result["Python"]["salary_range"]), 2)
         self.assertIsInstance(result["Python"]["average"], int)
 
-    def test_unknown_skill(self) -> None:
-        """Test that an unknown skill returns default values with 'unknown' demand."""
-        result: Dict[str, Any] = salary_benchmark_tool.invoke({"skills": ["Fortran"]})
-        self.assertIn("Fortran", result)
-        self.assertEqual(result["Fortran"]["demand"], "unknown")
-        self.assertIsNone(result["Fortran"]["salary_range"])
-        self.assertIsNone(result["Fortran"]["average"])
+    @patch("tools.market_tool.ChatOllama")
+    def test_unknown_skill(self, mock_ollama_class: MagicMock) -> None:
+        """Test that an unknown skill returns LLM estimated values."""
+        mock_llm = MagicMock()
+        mock_llm.invoke.return_value = MagicMock(content=json.dumps({
+            "salary_range": [10000, 20000],
+            "average": 15000,
+            "demand": "emerging"
+        }))
+        mock_ollama_class.return_value = mock_llm
 
-    def test_multiple_skills(self) -> None:
+        result: Dict[str, Any] = salary_benchmark_tool.invoke({"skills": ["NonExistentSkill"]})
+        self.assertIn("NonExistentSkill", result)
+        self.assertEqual(result["NonExistentSkill"]["demand"], "emerging")
+        self.assertEqual(result["NonExistentSkill"]["source"], "llm_estimated")
+
+    @patch("tools.market_tool.ChatOllama")
+    def test_multiple_skills(self, mock_ollama_class: MagicMock) -> None:
         """Test benchmarking multiple skills at once, covering all demand categories."""
-        skills: List[str] = ["Python", "Go", "Cobol", "UnknownSkill"]
+        mock_llm = MagicMock()
+        mock_llm.invoke.return_value = MagicMock(content=json.dumps({
+            "salary_range": [10000, 20000],
+            "average": 15000,
+            "demand": "emerging"
+        }))
+        mock_ollama_class.return_value = mock_llm
+
+        skills: List[str] = ["Python", "Go", "Cobol", "NonExistentSkill"]
         result: Dict[str, Any] = salary_benchmark_tool.invoke({"skills": skills})
 
         self.assertEqual(len(result), 4)
         self.assertEqual(result["Python"]["demand"], "high")
         self.assertEqual(result["Go"]["demand"], "emerging")
         self.assertEqual(result["Cobol"]["demand"], "low")
-        self.assertEqual(result["UnknownSkill"]["demand"], "unknown")
+        self.assertEqual(result["NonExistentSkill"]["demand"], "emerging")
 
     def test_empty_input(self) -> None:
         """Test that empty skill list returns empty result."""
@@ -158,21 +175,30 @@ class TestMarketScoutAgent(unittest.TestCase):
         # LLM should NOT have been called
         mock_ollama_class.assert_not_called()
 
+    @patch("tools.market_tool.ChatOllama")
     @patch("agents.market_agent.ChatOllama")
-    def test_agent_with_unknown_skill(self, mock_ollama_class: MagicMock) -> None:
-        """Test agent with a skill not in the benchmark dataset."""
-        mock_llm = MagicMock()
-        mock_llm.invoke.return_value = MagicMock(content=json.dumps({
+    def test_agent_with_unknown_skill(self, mock_agent_ollama: MagicMock, mock_tool_ollama: MagicMock) -> None:
+        """Test agent with a skill not in the benchmark dataset falls back to LLM estimation."""
+        mock_tool_llm = MagicMock()
+        mock_tool_llm.invoke.return_value = MagicMock(content=json.dumps({
+            "salary_range": [50000, 60000],
+            "average": 55000,
+            "demand": "emerging"
+        }))
+        mock_tool_ollama.return_value = mock_tool_llm
+
+        mock_agent_llm = MagicMock()
+        mock_agent_llm.invoke.return_value = MagicMock(content=json.dumps({
             "skill_analyses": [
-                {"skill": "UnknownSkill", "category": "unknown",
-                 "insight": "No market data available."}
+                {"skill": "UnknownSkill", "category": "emerging",
+                 "insight": "LLM estimated dataset."}
             ],
             "top_skills": [],
             "market_summary": "Insufficient data.",
             "recommended_salary_range": {"min": 0, "max": 0},
-            "reasoning": "No data for this skill."
+            "reasoning": "Estimated."
         }))
-        mock_ollama_class.return_value = mock_llm
+        mock_agent_ollama.return_value = mock_agent_llm
 
         from agents.market_agent import market_scout_agent
 
@@ -180,8 +206,8 @@ class TestMarketScoutAgent(unittest.TestCase):
         updated_state: AgentState = market_scout_agent(state)
 
         benchmark = updated_state["market_data"]["benchmark_data"]
-        self.assertEqual(benchmark["UnknownSkill"]["demand"], "unknown")
-        self.assertEqual(updated_state["market_data"]["trends"]["UnknownSkill"], "unknown")
+        self.assertEqual(benchmark["UnknownSkill"]["demand"], "emerging")
+        self.assertEqual(updated_state["market_data"]["trends"]["UnknownSkill"], "emerging")
 
     @patch("agents.market_agent.ChatOllama")
     def test_agent_preserves_existing_state(self, mock_ollama_class: MagicMock) -> None:
