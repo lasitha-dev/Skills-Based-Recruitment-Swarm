@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from datetime import datetime
 import re
 from typing import Any, TypedDict
 
@@ -31,6 +32,9 @@ Rules:
 - Do not include explanations or markdown.
 - If a field is unknown, use "" for candidate_name, [] for skills, and 0 for years_of_experience.
 - Skills must be normalized, concise, and unique.
+- If years_of_experience is not stated directly, estimate it from employment or project date ranges in the resume.
+- Use the longest relevant continuous span or combined spans from work history to infer the most defensible whole number of years.
+- Prefer explicit dates like "2022 - Present", "Jan 2023 - Dec 2024", or similar date ranges when calculating experience.
 """.strip()
 
 
@@ -102,12 +106,63 @@ def _fallback_parse(resume_text: str) -> ProfileData:
 	year_matches = re.findall(r"(\d{1,2})\+?\s+years?", lower_text)
 	if year_matches:
 		years = max(int(value) for value in year_matches)
+	else:
+		years = _infer_years_from_date_ranges(resume_text)
 
 	return {
 		"candidate_name": candidate_name,
 		"skills": skills,
 		"years_of_experience": years,
 	}
+
+
+def _parse_year(value: str) -> int | None:
+	"""Extract a four-digit year from a date token."""
+	matches = re.findall(r"(19|20)\d{2}", value)
+	if not matches:
+		return None
+	full_match = re.search(r"(19|20)\d{2}", value)
+	if not full_match:
+		return None
+	return int(full_match.group(0))
+
+
+def _infer_years_from_date_ranges(text: str) -> int:
+	"""Infer years of experience from visible date ranges in resume text."""
+	current_year = datetime.now().year
+	patterns = [
+		r"(19\d{2}|20\d{2})\s*[-–—]\s*(present|current|now|19\d{2}|20\d{2})",
+		r"([A-Za-z]{3,9}\s+\d{4}|\d{4})\s*[-–—]\s*(present|current|now|[A-Za-z]{3,9}\s+\d{4}|\d{4})",
+	]
+
+	spans: list[int] = []
+	for pattern in patterns:
+		for match in re.finditer(pattern, text, flags=re.IGNORECASE):
+			segment = match.group(0)
+			parts = re.split(r"[-–—]", segment)
+			if len(parts) < 2:
+				continue
+			start_raw = parts[0].strip()
+			end_raw = parts[1].strip().lower()
+
+			start_year = _parse_year(start_raw)
+			if start_year is None:
+				continue
+
+			if end_raw in {"present", "current", "now"}:
+				end_year = current_year
+			else:
+				end_year = _parse_year(end_raw)
+				if end_year is None:
+					continue
+
+			span = max(0, end_year - start_year)
+			if span > 0:
+				spans.append(span)
+
+	if spans:
+		return max(spans)
+	return 0
 
 
 def _normalize_profile(parsed: dict[str, Any]) -> ProfileData:

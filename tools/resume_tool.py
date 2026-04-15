@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PyPDF2 import PdfReader
+from docx import Document
 
 
 def resume_reader_tool(file_path: str) -> str:
@@ -18,15 +19,24 @@ def resume_reader_tool(file_path: str) -> str:
 
 	Raises:
 		FileNotFoundError: If the file does not exist.
-		ValueError: If the file is not a PDF or contains no extractable text.
+		ValueError: If the file is not a PDF/DOCX or contains no extractable text.
 		OSError: If the file cannot be read due to an I/O issue.
 	"""
 	path = Path(file_path)
 	if not path.exists():
 		raise FileNotFoundError(f"Resume file was not found: {file_path}")
 
-	if path.suffix.lower() != ".pdf":
-		raise ValueError("resume_reader_tool currently supports PDF files only.")
+	suffix = path.suffix.lower()
+	if suffix not in {".pdf", ".docx"}:
+		raise ValueError("resume_reader_tool currently supports PDF and DOCX files only.")
+
+	if suffix == ".docx":
+		document = Document(str(path))
+		paragraphs = [paragraph.text.strip() for paragraph in document.paragraphs if paragraph.text.strip()]
+		combined_text = "\n".join(paragraphs).strip()
+		if not combined_text:
+			raise ValueError(f"No extractable text found in DOCX: {file_path}")
+		return combined_text
 
 	reader = PdfReader(str(path))
 	page_texts: list[str] = []

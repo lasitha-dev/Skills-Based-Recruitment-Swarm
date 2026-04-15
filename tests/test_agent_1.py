@@ -56,7 +56,7 @@ def test_resume_reader_tool_raises_for_invalid_format(tmp_path: Path) -> None:
     invalid_path = tmp_path / "resume.txt"
     invalid_path.write_text("not a pdf", encoding="utf-8")
 
-    with pytest.raises(ValueError, match="supports PDF files only"):
+    with pytest.raises(ValueError, match="supports PDF and DOCX files only"):
         resume_reader_tool(str(invalid_path))
 
 
@@ -68,6 +68,22 @@ def test_resume_reader_tool_raises_for_empty_pdf_text(tmp_path: Path) -> None:
     with patch("tools.resume_tool.PdfReader", return_value=_MockReader([_MockPage(""), _MockPage("")])):
         with pytest.raises(ValueError, match="No extractable text"):
             resume_reader_tool(str(pdf_path))
+
+
+def test_resume_reader_tool_supports_docx(tmp_path: Path) -> None:
+    """Validate that resume_reader_tool can read DOCX files using python-docx."""
+    docx_path = tmp_path / "candidate.docx"
+    docx_path.write_bytes(b"fake docx bytes")
+
+    mock_document = SimpleNamespace(
+        paragraphs=[SimpleNamespace(text="Jane Doe"), SimpleNamespace(text="Python Developer")]
+    )
+
+    with patch("tools.resume_tool.Document", return_value=mock_document):
+        extracted = resume_reader_tool(str(docx_path))
+
+    assert "Jane Doe" in extracted
+    assert "Python Developer" in extracted
 
 
 def test_profile_parser_node_schema_validation_with_mocked_llm() -> None:
@@ -106,6 +122,23 @@ def test_profile_parser_node_data_type_integrity() -> None:
     profile = result["profile_data"]
     assert isinstance(profile["skills"], list)
     assert isinstance(profile["years_of_experience"], (int, str))
+
+
+def test_profile_parser_infers_years_from_date_ranges() -> None:
+    """Validate that date ranges in resume text can drive years-of-experience inference."""
+    mocked_response = SimpleNamespace(
+        content='{"candidate_name": "Alex", "skills": ["Python"], "years_of_experience": 0}'
+    )
+
+    resume_text = """Alex\nSoftware Engineer\nJan 2022 - Present\nWorked on Python services\n"""
+
+    with patch("agents.parser_agent.resume_reader_tool", return_value=resume_text), patch(
+        "agents.parser_agent.ChatOllama"
+    ) as chat_cls:
+        chat_cls.return_value.invoke.return_value = mocked_response
+        result = profile_parser_node({"file_path": "candidate.pdf", "logs": []})
+
+    assert result["profile_data"]["years_of_experience"] >= 0
 
 
 def test_profile_parser_handles_no_recognizable_skills() -> None:

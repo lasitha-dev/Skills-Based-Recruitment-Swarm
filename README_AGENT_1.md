@@ -72,10 +72,16 @@ Optional (force model selection):
 export OLLAMA_MODEL=llama3:8b
 ```
 
-## 5. Run Agent 1 with a local PDF CV
+## 5. Run Agent 1 with a local resume (PDF or DOCX)
 
 ```bash
 python3 main_graph.py "/Users/pramodwijenayake/Desktop/CV/PRAMOD WIJENAYAKE V1.6.pdf"
+```
+
+DOCX example:
+
+```bash
+python3 main_graph.py "/Users/pramodwijenayake/Desktop/CV/v6doc.docx"
 ```
 
 Important: Use `python3` (not `python`) on this Mac.
@@ -84,6 +90,12 @@ If you prefer not to activate the venv, use this exact command instead:
 
 ```bash
 .venv/bin/python3 main_graph.py "/Users/pramodwijenayake/Desktop/CV/PRAMOD WIJENAYAKE V1.6.pdf"
+```
+
+DOCX variant with direct venv interpreter:
+
+```bash
+.venv/bin/python3 main_graph.py "/Users/pramodwijenayake/Desktop/CV/v6doc.docx"
 ```
 
 ## 6. Expected terminal output
@@ -98,10 +110,21 @@ You will get JSON with these fields:
   - `years_of_experience`
 - `logs`
 
+Supported input formats:
+
+- `.pdf`
+- `.docx`
+
 ## 7. Run LLM-as-a-Judge validation
 
 ```bash
 PYTHONPATH=. python3 tests/llm_judge_parser_agent.py "/Users/pramodwijenayake/Desktop/CV/PRAMOD WIJENAYAKE V1.6.pdf"
+```
+
+DOCX example:
+
+```bash
+PYTHONPATH=. python3 tests/llm_judge_parser_agent.py "/Users/pramodwijenayake/Desktop/CV/v6doc.docx"
 ```
 
 If you run this in a fresh terminal, activate the venv first:
@@ -114,6 +137,12 @@ Or use the venv interpreter directly:
 
 ```bash
 PYTHONPATH=. .venv/bin/python3 tests/llm_judge_parser_agent.py "/Users/pramodwijenayake/Desktop/CV/PRAMOD WIJENAYAKE V1.6.pdf"
+```
+
+DOCX variant with direct venv interpreter:
+
+```bash
+PYTHONPATH=. .venv/bin/python3 tests/llm_judge_parser_agent.py "/Users/pramodwijenayake/Desktop/CV/v6doc.docx"
 ```
 
 The script prints:
@@ -146,6 +175,9 @@ python3 -m pytest tests/test_agent_1.py
 
 - `No extractable text found in PDF`:
   - Use a text-based PDF (not scanned image PDF), or OCR it first.
+
+- `No extractable text found in DOCX`:
+  - Ensure the DOCX has real paragraph text (not image-only content).
 
 - `externally-managed-environment` during pip install:
   - Use virtual environment and install inside `.venv`.
