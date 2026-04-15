@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import argparse
+import json
 import logging
-from typing import Any, TypedDict
+from typing import Any
 
 from langgraph.graph import END, START, StateGraph
 
@@ -72,16 +74,44 @@ def build_graph() -> Any:
 
 
 def main() -> None:
-	"""Runs a minimal local demo of the orchestrator."""
+	"""Runs the orchestrator or an interactive CLI demo."""
+	parser = argparse.ArgumentParser(description="Run the recruitment swarm graph")
+	parser.add_argument(
+		"--interactive",
+		action="store_true",
+		help="Prompt for job description and skills in the terminal.",
+	)
+	arguments = parser.parse_args()
+
 	app = build_graph()
-	sample_state: AgentState = {
-		"job_description": "Need strong Python, AWS and SQL experience for backend platform work.",
-		"found_skills": ["Python"],
-		"required_skills": ["python", "aws", "sql"],
-	}
+	if arguments.interactive:
+		job_description: str = input("Job description: ").strip()
+		found_skills_input: str = input("Found skills (comma-separated): ").strip()
+		required_skills_input: str = input("Required skills (comma-separated, optional): ").strip()
+		sample_state: AgentState = {
+			"job_description": job_description,
+			"found_skills": [
+				skill.strip()
+				for skill in found_skills_input.split(",")
+				if skill.strip()
+			],
+		}
+		if required_skills_input:
+			sample_state["required_skills"] = [
+				skill.strip()
+				for skill in required_skills_input.split(",")
+				if skill.strip()
+			]
+	else:
+		sample_state = {
+			"job_description": "Need strong Python, AWS and SQL experience for backend platform work.",
+			"found_skills": ["Python"],
+			"required_skills": ["python", "aws", "sql"],
+		}
+
 	result: dict[str, Any] = app.invoke(sample_state)
 	LOGGER.info("Graph run completed", extra={"keys": list(result.keys())})
-	print(result)
+	print(json.dumps(result, indent=2, ensure_ascii=False))
 
 
 if __name__ == "__main__":
