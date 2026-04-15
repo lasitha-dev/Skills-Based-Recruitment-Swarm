@@ -1,2 +1,24 @@
+# Assignment documents
 Skills-Based Recruitment Swarm CTSE Assignment 2.pdf
+CTSE Assignment 2.docx
+CTSE - Assignment 2.pdf
 AGENTS.md
+
+# Virtual environment
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Pytest cache
+.pytest_cache/
+
+# IDE files
+.vscode/
+.idea/
+
+# OS files
+Thumbs.db
+.DS_Store

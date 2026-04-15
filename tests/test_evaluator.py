@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
 from agents.evaluator_agent import evaluate_candidate
+from main_graph import tech_evaluator_agent
 from tools.question_tool import QuestionBankError, QuestionBankTool
 
 
@@ -123,4 +125,43 @@ def test_evaluator_returns_controlled_error_for_bad_question_bank(tmp_path: Path
 	assert update["evaluation_questions"] == []
 	assert "evaluation_errors" in update
 	assert len(update["evaluation_errors"]) == 1
+
+
+def test_tech_evaluator_agent_preserves_upstream_state() -> None:
+	"""Graph node should preserve upstream fields while appending evaluator outputs."""
+	state = {
+		"candidate_name": "Jane Doe",
+		"job_description": "Need Python, AWS, and SQL experience.",
+		"found_skills": ["python"],
+		"market_data": {"skills_analyzed": ["Python"]},
+		"logs": ["[MarketScout] done"],
+	}
+
+	updated = tech_evaluator_agent(state)
+
+	# Upstream fields remain intact.
+	assert updated["candidate_name"] == "Jane Doe"
+	assert updated["market_data"]["skills_analyzed"] == ["Python"]
+	assert "[MarketScout] done" in updated["logs"]
+
+	# Agent 3 outputs are added.
+	assert "evaluation_results" in updated
+	assert "questions" in updated
+	assert isinstance(updated["questions"], list)
+
+
+def test_tech_evaluator_agent_handles_evaluation_exception() -> None:
+	"""Graph node should return structured fallback output on evaluator failure."""
+	state = {
+		"job_description": "Need Python",
+		"found_skills": ["python"],
+		"logs": [],
+	}
+
+	with patch("main_graph.evaluate_candidate", side_effect=RuntimeError("boom")):
+		updated = tech_evaluator_agent(state)
+
+	assert "evaluation_results" in updated
+	assert updated["questions"] == []
+	assert updated["evaluation_results"]["evaluation_errors"] == ["boom"]
 

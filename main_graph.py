@@ -1,118 +1,163 @@
-"""LangGraph orchestrator for the recruitment swarm."""
+"""
+LangGraph orchestrator for the MARS (Multi-Agent Recruitment Swarm) system.
+
+Pipeline:
+    START -> profile_parser -> market_scout -> tech_evaluator -> recruitment_lead -> END
+"""
 
 from __future__ import annotations
 
-import argparse
 import json
 import logging
+import sys
 from typing import Any
 
 from langgraph.graph import END, START, StateGraph
 
-from agents.evaluator_agent import EvaluatorState, evaluate_candidate
+from agents.evaluator_agent import evaluate_candidate
+from agents.market_agent import market_scout_agent
+from agents.parser_agent import GraphState, profile_parser_agent, profile_parser_node
+from agents.state import AgentState
+
+# Configure logging for the entire pipeline (stdout to avoid PowerShell stderr issues)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)-8s | %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    stream=sys.stdout,
+)
+logger = logging.getLogger(__name__)
 
 
-LOGGER = logging.getLogger(__name__)
+def tech_evaluator_agent(state: AgentState) -> AgentState:
+    """Agent 3 (Tech Evaluator) integration node.
+
+    Consumes upstream outputs from Agent 1/2 and writes evaluator outputs back
+    into shared state without overwriting previous fields.
+    """
+    logs = list(state.get("logs", []))
+    logs.append(f"[TechEvaluator] Agent invoked. State keys: {list(state.keys())}")
+
+    evaluator_input: dict[str, Any] = {
+        "job_description": state.get("job_description", ""),
+        "found_skills": state.get("found_skills", []),
+        "required_skills": state.get("required_skills", []),
+    }
+
+    logger.info("[TechEvaluator] Running gap analysis for %d skills.", len(evaluator_input["found_skills"]))
+
+    try:
+        evaluator_update = evaluate_candidate(evaluator_input)
+    except Exception as error:
+        logger.error("[TechEvaluator] Evaluation failed: %s", error)
+        logs.append(f"[TechEvaluator] ERROR during evaluation: {error}")
+        return {
+            **state,
+            "evaluation_results": {
+                "skill_gaps": {
+                    "required_skills": [],
+                    "found_skills": evaluator_input["found_skills"],
+                    "matched_skills": [],
+                    "missing_skills": [],
+                },
+                "evaluation_summary": "Evaluator failed unexpectedly.",
+                "evaluation_errors": [str(error)],
+            },
+            "questions": [],
+            "logs": logs,
+        }
+
+    evaluation_results = {
+        "skill_gaps": evaluator_update.get("skill_gaps", {}),
+        "evaluation_summary": evaluator_update.get("evaluation_summary", ""),
+        "evaluation_errors": evaluator_update.get("evaluation_errors", []),
+    }
+    questions = evaluator_update.get("evaluation_questions", [])
+
+    logs.append(
+        "[TechEvaluator] Completed. Missing skills: "
+        f"{evaluation_results.get('skill_gaps', {}).get('missing_skills', [])}. "
+        f"Questions generated: {len(questions)}"
+    )
+
+    return {
+        **state,
+        "evaluation_results": evaluation_results,
+        "questions": questions,
+        "logs": logs,
+    }
 
 
-class AgentState(EvaluatorState, total=False):
-	"""Shared state passed between the swarm nodes.
-
-	The state is intentionally cumulative so each agent can append to the same
-	payload without erasing prior work.
-	"""
-
-	resume_path: str
-	parsed_resume: dict[str, Any]
-	salary_data: dict[str, Any]
-	report_path: str
+def recruitment_lead_stub(state: AgentState) -> AgentState:
+    """Stub for Agent 4 (Recruitment Lead)."""
+    logs = list(state.get("logs", []))
+    logs.append("[RecruitmentLead] (STUB) Agent 4 placeholder - passing through.")
+    logger.info("[RecruitmentLead] (STUB) Passing through.")
+    return {**state, "logs": logs}
 
 
-def parser_node(state: AgentState) -> dict[str, Any]:
-	"""Pass-through placeholder for Agent 1 until the parser is implemented."""
-	LOGGER.info("Parser node received state", extra={"keys": list(state.keys())})
-	return {}
+def build_mars_graph() -> Any:
+    """Build and compile the MARS state graph."""
+    graph = StateGraph(AgentState)
 
+    graph.add_node("profile_parser", profile_parser_agent)
+    graph.add_node("market_scout", market_scout_agent)
+    graph.add_node("tech_evaluator", tech_evaluator_agent)
+    graph.add_node("recruitment_lead", recruitment_lead_stub)
 
-def market_node(state: AgentState) -> dict[str, Any]:
-	"""Pass-through placeholder for Agent 2 until the market scout is implemented."""
-	LOGGER.info("Market node received state", extra={"keys": list(state.keys())})
-	return {}
+    graph.add_edge(START, "profile_parser")
+    graph.add_edge("profile_parser", "market_scout")
+    graph.add_edge("market_scout", "tech_evaluator")
+    graph.add_edge("tech_evaluator", "recruitment_lead")
+    graph.add_edge("recruitment_lead", END)
 
+    logger.info(
+        "[MARS] State graph built: START -> profile_parser -> market_scout "
+        "-> tech_evaluator -> recruitment_lead -> END"
+    )
 
-def evaluator_node(state: AgentState) -> dict[str, Any]:
-	"""Runs Agent 3 gap analysis and question selection."""
-	LOGGER.info("Evaluator node received state", extra={"keys": list(state.keys())})
-	return evaluate_candidate(state)
-
-
-def lead_node(state: AgentState) -> dict[str, Any]:
-	"""Pass-through placeholder for Agent 4 until the report generator is implemented."""
-	LOGGER.info("Lead node received state", extra={"keys": list(state.keys())})
-	return {}
+    return graph.compile()
 
 
 def build_graph() -> Any:
-	"""Builds the LangGraph workflow for the recruitment swarm.
-
-	Returns:
-		A compiled LangGraph application ready to invoke with an AgentState.
-	"""
-	graph: StateGraph[AgentState] = StateGraph(AgentState)
-	graph.add_node("parser", parser_node)
-	graph.add_node("market", market_node)
-	graph.add_node("evaluator", evaluator_node)
-	graph.add_node("lead", lead_node)
-
-	graph.add_edge(START, "parser")
-	graph.add_edge("parser", "market")
-	graph.add_edge("market", "evaluator")
-	graph.add_edge("evaluator", "lead")
-	graph.add_edge("lead", END)
-
-	return graph.compile()
+    """Compatibility wrapper for callers expecting build_graph()."""
+    return build_mars_graph()
 
 
-def main() -> None:
-	"""Runs the orchestrator or an interactive CLI demo."""
-	parser = argparse.ArgumentParser(description="Run the recruitment swarm graph")
-	parser.add_argument(
-		"--interactive",
-		action="store_true",
-		help="Prompt for job description and skills in the terminal.",
-	)
-	arguments = parser.parse_args()
+def run_parser(file_path: str) -> GraphState:
+    """Run Agent 1 parser standalone for direct validation scripts."""
+    parser_graph = StateGraph(GraphState)
+    parser_graph.add_node("profile_parser", profile_parser_node)
+    parser_graph.add_edge(START, "profile_parser")
+    parser_graph.add_edge("profile_parser", END)
+    app = parser_graph.compile()
+    return app.invoke({"file_path": file_path, "logs": []})
 
-	app = build_graph()
-	if arguments.interactive:
-		job_description: str = input("Job description: ").strip()
-		found_skills_input: str = input("Found skills (comma-separated): ").strip()
-		required_skills_input: str = input("Required skills (comma-separated, optional): ").strip()
-		sample_state: AgentState = {
-			"job_description": job_description,
-			"found_skills": [
-				skill.strip()
-				for skill in found_skills_input.split(",")
-				if skill.strip()
-			],
-		}
-		if required_skills_input:
-			sample_state["required_skills"] = [
-				skill.strip()
-				for skill in required_skills_input.split(",")
-				if skill.strip()
-			]
-	else:
-		sample_state = {
-			"job_description": "Need strong Python, AWS and SQL experience for backend platform work.",
-			"found_skills": ["Python"],
-			"required_skills": ["python", "aws", "sql"],
-		}
 
-	result: dict[str, Any] = app.invoke(sample_state)
-	LOGGER.info("Graph run completed", extra={"keys": list(result.keys())})
-	print(json.dumps(result, indent=2, ensure_ascii=False))
+def run_mars_pipeline(initial_state: AgentState) -> AgentState:
+    """Run the full MARS pipeline with the given initial state."""
+    logger.info("[MARS] ==================================================")
+    logger.info("[MARS] Starting MARS pipeline...")
+    logger.info(
+        "[MARS] Initial state: %s",
+        json.dumps({k: v for k, v in initial_state.items() if k != "logs"}, indent=2, default=str),
+    )
+
+    compiled_graph = build_mars_graph()
+    final_state: AgentState = compiled_graph.invoke(initial_state)
+
+    logger.info("[MARS] Pipeline completed successfully.")
+    logger.info("[MARS] Final state keys: %s", list(final_state.keys()))
+    return final_state
 
 
 if __name__ == "__main__":
-	main()
+    test_state: AgentState = {
+        "candidate_name": "John Doe",
+        "job_description": "Need Python, AWS, SQL, and Docker for backend platform work.",
+        "found_skills": ["Python", "Docker", "React"],
+        "logs": [],
+    }
+
+    final_state = run_mars_pipeline(test_state)
+    print(json.dumps(final_state, indent=2, default=str))
