@@ -19,7 +19,7 @@ if str(ROOT_DIR) not in sys.path:
 from main_graph import run_parser
 
 
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3:8b")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "phi3")
 
 
 JUDGE_SYSTEM_PROMPT = """
