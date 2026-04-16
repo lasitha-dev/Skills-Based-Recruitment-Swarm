@@ -1,0 +1,35 @@
+{
+  "candidate_name": "Sarah Martinez",
+  "parsed_resume": {
+    "strength_score": 0.78,
+    "experience_years": 6,
+    "skills": [
+      "Python",
+      "SQL",
+      "Docker",
+      "AWS",
+      "REST APIs",
+      "Git",
+      "Linux"
+    ],
+    "education": "Bachelor's Degree in Computer Science",
+    "skill_gaps": [
+      "Kubernetes",
+      "Microservices Architecture",
+      "Advanced Python Performance Tuning"
+    ]
+  },
+  "market_data": {
+    "market_fit_score": 0.81,
+    "salary_range": "$95,000 - $130,000",
+    "role_demand": "high",
+    "market_trend": "growing"
+  },
+  "technical_evaluation": {
+    "technical_score": 0.82,
+    "questions_answered": 8,
+    "total_questions": 10,
+    "response_quality": "excellent",
+    "interviewer_notes": "Candidate demonstrated strong problem-solving skills and clear communication. Shows enthusiasm for learning and growth."
+  }
+}
