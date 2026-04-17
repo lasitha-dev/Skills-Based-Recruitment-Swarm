@@ -15,6 +15,7 @@ from typing import Any
 from langgraph.graph import END, START, StateGraph
 
 from agents.evaluator_agent import evaluate_candidate
+from agents.lead_agent import lead_agent
 from agents.market_agent import market_scout_agent
 from agents.parser_agent import GraphState, profile_parser_agent, profile_parser_node
 from agents.state import AgentState
@@ -88,12 +89,40 @@ def tech_evaluator_agent(state: AgentState) -> AgentState:
     }
 
 
-def recruitment_lead_stub(state: AgentState) -> AgentState:
-    """Stub for Agent 4 (Recruitment Lead)."""
+def recruitment_lead_agent(state: AgentState) -> AgentState:
+    """Agent 4 (Recruitment Lead) integration node."""
     logs = list(state.get("logs", []))
-    logs.append("[RecruitmentLead] (STUB) Agent 4 placeholder - passing through.")
-    logger.info("[RecruitmentLead] (STUB) Passing through.")
-    return {**state, "logs": logs}
+    logs.append(f"[RecruitmentLead] Agent invoked. State keys: {list(state.keys())}")
+    logger.info("[RecruitmentLead] Running final synthesis and recommendation.")
+
+    try:
+        recommendation_update = lead_agent(state)
+    except Exception as error:
+        logger.error("[RecruitmentLead] Failed during synthesis: %s", error)
+        logs.append(f"[RecruitmentLead] ERROR: {error}")
+        recommendation_update = {
+            "final_recommendation": "Insufficient data",
+            "recommendation_reason": f"Recruitment Lead failed unexpectedly: {error}",
+            "report_path": "",
+        }
+
+    final_report = {
+        "recommendation": recommendation_update.get("final_recommendation", "Insufficient data"),
+        "reason": recommendation_update.get("recommendation_reason", "No reason provided."),
+        "report_path": recommendation_update.get("report_path", ""),
+    }
+
+    logs.append(
+        "[RecruitmentLead] Completed. Recommendation: "
+        f"{final_report['recommendation']}. Report path: {final_report['report_path'] or 'N/A'}"
+    )
+
+    return {
+        **state,
+        **recommendation_update,
+        "final_report": final_report,
+        "logs": logs,
+    }
 
 
 def build_mars_graph() -> Any:
@@ -103,7 +132,7 @@ def build_mars_graph() -> Any:
     graph.add_node("profile_parser", profile_parser_agent)
     graph.add_node("market_scout", market_scout_agent)
     graph.add_node("tech_evaluator", tech_evaluator_agent)
-    graph.add_node("recruitment_lead", recruitment_lead_stub)
+    graph.add_node("recruitment_lead", recruitment_lead_agent)
 
     graph.add_edge(START, "profile_parser")
     graph.add_edge("profile_parser", "market_scout")
