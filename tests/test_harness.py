@@ -19,9 +19,9 @@ from tools.market_tool import salary_benchmark_tool
 logging.basicConfig(level=logging.INFO)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 # SalaryBenchmarkTool Tests
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 
 class TestSalaryBenchmarkTool(unittest.TestCase):
     """Unit tests for the SalaryBenchmarkTool."""
@@ -93,9 +93,9 @@ class TestSalaryBenchmarkTool(unittest.TestCase):
         self.assertEqual(result["python"]["demand"], "high")
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 # Market Scout Agent Tests (with LLM mocked)
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 
 class TestMarketScoutAgent(unittest.TestCase):
     """Unit tests for the Market Scout agent node.
@@ -126,7 +126,6 @@ class TestMarketScoutAgent(unittest.TestCase):
     @patch("agents.market_agent.ChatOllama")
     def test_agent_with_skills(self, mock_ollama_class: MagicMock) -> None:
         """Test full agent execution with valid skills."""
-        # Setup mock LLM
         mock_llm = MagicMock()
         mock_llm.invoke.return_value = MagicMock(content=self._mock_llm_response())
         mock_ollama_class.return_value = mock_llm
@@ -136,7 +135,6 @@ class TestMarketScoutAgent(unittest.TestCase):
         state: AgentState = {"found_skills": ["Python", "Go"], "logs": []}
         updated_state: AgentState = market_scout_agent(state)
 
-        # Verify market_data structure
         self.assertIn("market_data", updated_state)
         market_data = updated_state["market_data"]
         self.assertIn("benchmark_data", market_data)
@@ -144,18 +142,13 @@ class TestMarketScoutAgent(unittest.TestCase):
         self.assertIn("llm_analysis", market_data)
         self.assertIn("skills_analyzed", market_data)
 
-        # Verify benchmark data
         self.assertIn("Python", market_data["benchmark_data"])
         self.assertIn("Go", market_data["benchmark_data"])
 
-        # Verify trends
         self.assertEqual(market_data["trends"]["Python"], "high-demand")
         self.assertEqual(market_data["trends"]["Go"], "emerging")
 
-        # Verify LLM was called
         mock_llm.invoke.assert_called_once()
-
-        # Verify logs
         self.assertTrue(any("MarketScout" in log for log in updated_state["logs"]))
 
     @patch("agents.market_agent.ChatOllama")
@@ -166,13 +159,11 @@ class TestMarketScoutAgent(unittest.TestCase):
         state: AgentState = {"found_skills": [], "logs": []}
         updated_state: AgentState = market_scout_agent(state)
 
-        # Should still have market_data key but empty
         self.assertIn("market_data", updated_state)
         self.assertEqual(updated_state["market_data"]["benchmark_data"], {})
         self.assertEqual(updated_state["market_data"]["skills_analyzed"], [])
         self.assertTrue(any("No skills found" in log for log in updated_state["logs"]))
 
-        # LLM should NOT have been called
         mock_ollama_class.assert_not_called()
 
     @patch("tools.market_tool.ChatOllama")
@@ -226,11 +217,8 @@ class TestMarketScoutAgent(unittest.TestCase):
         }
         updated_state: AgentState = market_scout_agent(state)
 
-        # Verify other agent fields are preserved
         self.assertEqual(updated_state["candidate_name"], "Test Candidate")
         self.assertEqual(updated_state["structured_profile"]["name"], "Test")
-
-        # Verify previous logs are preserved
         self.assertIn("[Agent1] Previous log entry", updated_state["logs"])
 
     @patch("agents.market_agent.ChatOllama")
@@ -245,11 +233,10 @@ class TestMarketScoutAgent(unittest.TestCase):
         state: AgentState = {"found_skills": ["Python", "Docker"], "logs": []}
         updated_state: AgentState = market_scout_agent(state)
 
-        # This should not raise — output must be JSON serializable
         try:
             json.dumps(updated_state, default=str)
-        except TypeError as e:
-            self.fail(f"Agent output is not JSON serializable: {e}")
+        except TypeError as error:
+            self.fail(f"Agent output is not JSON serializable: {error}")
 
 
 if __name__ == "__main__":

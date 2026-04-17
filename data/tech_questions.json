@@ -1,1 +1,86 @@
-[]
+[
+	{
+		"skill": "python",
+		"difficulty": "easy",
+		"question": "Explain the difference between a list and a tuple in Python.",
+		"tags": ["core", "data-structures"]
+	},
+	{
+		"skill": "python",
+		"difficulty": "medium",
+		"question": "How does Python's GIL affect multi-threaded CPU-bound programs?",
+		"tags": ["concurrency", "runtime"]
+	},
+	{
+		"skill": "python",
+		"difficulty": "hard",
+		"question": "Design a memory-efficient iterator pipeline for processing large log files.",
+		"tags": ["iterators", "performance"]
+	},
+	{
+		"skill": "aws",
+		"difficulty": "easy",
+		"question": "What is the difference between an EC2 instance and a Lambda function?",
+		"tags": ["cloud", "compute"]
+	},
+	{
+		"skill": "aws",
+		"difficulty": "medium",
+		"question": "How would you secure data access for an application running on AWS?",
+		"tags": ["iam", "security"]
+	},
+	{
+		"skill": "aws",
+		"difficulty": "hard",
+		"question": "Describe a multi-region disaster recovery strategy for a critical workload.",
+		"tags": ["resilience", "architecture"]
+	},
+	{
+		"skill": "sql",
+		"difficulty": "easy",
+		"question": "What is the difference between INNER JOIN and LEFT JOIN?",
+		"tags": ["joins", "fundamentals"]
+	},
+	{
+		"skill": "sql",
+		"difficulty": "medium",
+		"question": "How do indexes improve query performance, and what are the trade-offs?",
+		"tags": ["indexes", "optimization"]
+	},
+	{
+		"skill": "sql",
+		"difficulty": "hard",
+		"question": "How would you diagnose and optimize a slow aggregation query on a large table?",
+		"tags": ["query-plans", "tuning"]
+	},
+	{
+		"skill": "docker",
+		"difficulty": "easy",
+		"question": "What is the difference between a Docker image and a Docker container?",
+		"tags": ["containers", "fundamentals"]
+	},
+	{
+		"skill": "docker",
+		"difficulty": "medium",
+		"question": "How can multi-stage Docker builds reduce image size and attack surface?",
+		"tags": ["build", "security"]
+	},
+	{
+		"skill": "kubernetes",
+		"difficulty": "easy",
+		"question": "What is a Kubernetes Deployment and how does it differ from a Pod?",
+		"tags": ["k8s", "workloads"]
+	},
+	{
+		"skill": "kubernetes",
+		"difficulty": "medium",
+		"question": "How do readiness and liveness probes improve service reliability?",
+		"tags": ["health-checks", "reliability"]
+	},
+	{
+		"skill": "kubernetes",
+		"difficulty": "hard",
+		"question": "Explain a rolling update rollback strategy for zero-downtime deployments.",
+		"tags": ["deployments", "operations"]
+	}
+]

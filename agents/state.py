@@ -14,6 +14,8 @@ class AgentState(TypedDict, total=False):
     Attributes:
         resume_file_path: Optional local path to a resume file for Agent 1 parsing.
         resume_text: Raw extracted resume text from Agent 1.
+        job_description: Optional job description used by Agent 3 evaluation.
+        required_skills: Optional explicit required skills used by Agent 3.
         candidate_name: Name of the candidate being evaluated.
         found_skills: Skills extracted by Agent 1 (Profile Parser).
         structured_profile: Full structured profile from Agent 1.
@@ -25,6 +27,8 @@ class AgentState(TypedDict, total=False):
     """
     resume_file_path: Optional[str]
     resume_text: Optional[str]
+    job_description: Optional[str]
+    required_skills: Optional[List[str]]
     candidate_name: Optional[str]
     found_skills: List[str]
     structured_profile: Optional[Dict[str, Any]]
