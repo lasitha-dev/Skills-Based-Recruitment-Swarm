@@ -9,10 +9,10 @@ import os
 import sys
 import uuid
 from pathlib import Path
-from typing import Annotated, List
+from typing import List
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import FileResponse
 
 from backend.job_store import JobStoreError, ROOT_DIR, load_job_state, save_job_payload, save_job_state, save_upload, utc_now_iso
 from backend.models import HealthResponse, JobCreateResponse, JobState, JobStatusResponse
@@ -68,10 +68,10 @@ def health_check() -> HealthResponse:
     },
 )
 async def create_job(
-    resume: Annotated[UploadFile, File(...)],
-    candidate_name: Annotated[str, Form(default="")],
-    job_description: Annotated[str, Form(default="")],
-    required_skills: Annotated[str, Form(default="")],
+    resume: UploadFile = File(...),
+    candidate_name: str = Form(default=""),
+    job_description: str = Form(default=""),
+    required_skills: str = Form(default=""),
 ) -> JobCreateResponse:
     """Create an async MARS pipeline job from uploaded resume data.
 
@@ -194,7 +194,7 @@ def get_job_status(job_id: str) -> JobStatusResponse:
         409: {"description": "Job has not completed yet."},
     },
 )
-def get_job_report(job_id: str) -> PlainTextResponse | FileResponse:
+def get_job_report(job_id: str) -> FileResponse:
     """Return generated report for a completed job.
 
     Args:
