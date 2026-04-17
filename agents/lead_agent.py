@@ -84,9 +84,7 @@ def lead_agent(state: Dict[str, Any]) -> Dict[str, Any]:
         
         # Extract and validate required fields
         candidate_name: str = state.get("candidate_name")
-        parsed_resume: Optional[Dict] = state.get("parsed_resume")
-        market_data: Optional[Dict] = state.get("market_data")
-        technical_evaluation: Optional[Dict] = state.get("technical_evaluation")
+        parsed_resume, market_data, technical_evaluation = _normalize_agent_payloads(state)
         
         # Check for missing critical data
         if not all([candidate_name, parsed_resume, market_data, technical_evaluation]):
@@ -195,6 +193,134 @@ def lead_agent(state: Dict[str, Any]) -> Dict[str, Any]:
             "recommendation_reason": f"Error processing recommendation: {str(e)}",
             "report_path": ""
         }
+
+
+def _normalize_agent_payloads(
+    state: Dict[str, Any]
+) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+    """Normalize upstream payloads from either legacy or merged state contracts.
+
+    Args:
+        state: Shared state containing outputs from Agents 1-3.
+
+    Returns:
+        Tuple of normalized payloads in order:
+        (parsed_resume, market_data, technical_evaluation).
+    """
+    # Agent 1 payload: prefer legacy key, fallback to merged key.
+    parsed_resume_raw = state.get("parsed_resume") or state.get("structured_profile")
+    parsed_resume: Optional[Dict[str, Any]] = (
+        dict(parsed_resume_raw) if isinstance(parsed_resume_raw, dict) else None
+    )
+
+    if parsed_resume is not None and parsed_resume.get("strength_score") is None:
+        parsed_resume["strength_score"] = _derive_strength_score(parsed_resume)
+
+    # Agent 2 payload: market_data is stable, but score may need deriving.
+    market_data_raw = state.get("market_data")
+    market_data: Optional[Dict[str, Any]] = (
+        dict(market_data_raw) if isinstance(market_data_raw, dict) else None
+    )
+
+    if market_data is not None and market_data.get("market_fit_score") is None:
+        market_data["market_fit_score"] = _derive_market_fit_score(market_data)
+
+    # Agent 3 payload: prefer legacy key, fallback to merged key.
+    technical_raw = state.get("technical_evaluation") or state.get("evaluation_results")
+    technical_evaluation: Optional[Dict[str, Any]] = (
+        dict(technical_raw) if isinstance(technical_raw, dict) else None
+    )
+
+    if technical_evaluation is not None and technical_evaluation.get("technical_score") is None:
+        technical_evaluation["technical_score"] = _derive_technical_score(technical_evaluation)
+
+    return parsed_resume, market_data, technical_evaluation
+
+
+def _derive_strength_score(parsed_resume: Dict[str, Any]) -> Optional[float]:
+    """Derive a resume strength score when Agent 1 did not provide one directly.
+
+    Args:
+        parsed_resume: Resume payload from Agent 1.
+
+    Returns:
+        Float in range [0.0, 1.0] or None when insufficient data exists.
+    """
+    years = parsed_resume.get("experience_years")
+    skills = parsed_resume.get("skills", [])
+
+    years_score: Optional[float] = None
+    if isinstance(years, (int, float)):
+        years_score = min(max(float(years), 0.0), 10.0) / 10.0
+
+    skills_score: Optional[float] = None
+    if isinstance(skills, list):
+        valid_skills = [item for item in skills if isinstance(item, str) and item.strip()]
+        skills_score = min(len(valid_skills), 10) / 10.0
+
+    components = [value for value in [years_score, skills_score] if value is not None]
+    if not components:
+        return None
+
+    return sum(components) / len(components)
+
+
+def _derive_technical_score(technical_evaluation: Dict[str, Any]) -> Optional[float]:
+    """Derive technical score from Agent 3 evaluation_results when needed.
+
+    Args:
+        technical_evaluation: Agent 3 payload.
+
+    Returns:
+        Float in range [0.0, 1.0] or None when derivation is not possible.
+    """
+    skill_gaps = technical_evaluation.get("skill_gaps")
+    if not isinstance(skill_gaps, dict):
+        return None
+
+    required = skill_gaps.get("required_skills", [])
+    matched = skill_gaps.get("matched_skills", [])
+
+    if not isinstance(required, list) or not isinstance(matched, list):
+        return None
+    if len(required) == 0:
+        return None
+
+    return min(max(len(matched) / len(required), 0.0), 1.0)
+
+
+def _derive_market_fit_score(market_data: Dict[str, Any]) -> Optional[float]:
+    """Derive market fit score from Agent 2 market trend categories.
+
+    Args:
+        market_data: Agent 2 output payload.
+
+    Returns:
+        Float in range [0.0, 1.0] or None when derivation is not possible.
+    """
+    trends = market_data.get("trends", {})
+    if not isinstance(trends, dict) or not trends:
+        return None
+
+    demand_weights = {
+        "high-demand": 1.0,
+        "high": 1.0,
+        "emerging": 0.7,
+        "low-demand": 0.3,
+        "low": 0.3,
+        "unknown": 0.5,
+        "error": 0.3,
+    }
+
+    values: list[float] = []
+    for demand in trends.values():
+        if isinstance(demand, str):
+            values.append(demand_weights.get(demand.lower(), 0.5))
+
+    if not values:
+        return None
+
+    return sum(values) / len(values)
 
 
 def _extract_scores(
@@ -412,9 +538,10 @@ def _prepare_report_data(
     Returns:
         Dict with all fields needed by ReportGeneratorTool.generate_report().
     """
-    parsed_resume = state.get("parsed_resume", {})
-    market_data = state.get("market_data", {})
-    technical_eval = state.get("technical_evaluation", {})
+    parsed_resume_raw, market_data_raw, technical_eval_raw = _normalize_agent_payloads(state)
+    parsed_resume = parsed_resume_raw or {}
+    market_data = market_data_raw or {}
+    technical_eval = technical_eval_raw or {}
     
     report_data = {
         "candidate_name": state.get("candidate_name", "Unknown Candidate"),

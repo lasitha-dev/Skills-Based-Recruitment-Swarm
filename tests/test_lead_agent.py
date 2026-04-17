@@ -24,6 +24,7 @@ from agents.lead_agent import (
     NOT_RECOMMENDED,
     INSUFFICIENT_DATA
 )
+from main_graph import recruitment_lead_agent
 
 
 # ============================================================================
@@ -701,6 +702,78 @@ def test_full_workflow_strong_candidate_generates_report(strong_candidate_state:
     assert "Evaluation Summary" in content
     assert "Final Recommendation" in content
     assert STRONG_HIRE in content
+
+
+def test_lead_agent_supports_merged_agent_state_schema() -> None:
+    """Agent 4 should support merged outputs from Agents 1-3 keys.
+
+    Validates compatibility with:
+    - Agent 1: structured_profile
+    - Agent 2: market_data with trends
+    - Agent 3: evaluation_results
+    """
+    state = {
+        "candidate_name": "Schema Compatible Candidate",
+        "structured_profile": {
+            "skills": ["Python", "AWS", "SQL", "Docker"],
+            "years_of_experience": 6,
+            "education": "BSc Computer Science",
+        },
+        "market_data": {
+            "trends": {
+                "Python": "high-demand",
+                "AWS": "high-demand",
+                "SQL": "emerging",
+            }
+        },
+        "evaluation_results": {
+            "skill_gaps": {
+                "required_skills": ["python", "aws", "sql"],
+                "matched_skills": ["python", "aws"],
+                "missing_skills": ["sql"],
+            }
+        },
+    }
+
+    result = lead_agent(state)
+
+    assert result["final_recommendation"] != INSUFFICIENT_DATA
+    assert result["report_path"] != ""
+
+
+def test_recruitment_lead_graph_node_preserves_state_and_sets_final_report() -> None:
+    """Graph node should preserve upstream fields and attach final_report metadata."""
+    state = {
+        "candidate_name": "Node Integration Candidate",
+        "structured_profile": {
+            "skills": ["Python", "Docker", "AWS"],
+            "years_of_experience": 5,
+        },
+        "market_data": {
+            "trends": {
+                "Python": "high-demand",
+                "Docker": "high-demand",
+                "AWS": "high-demand",
+            }
+        },
+        "evaluation_results": {
+            "skill_gaps": {
+                "required_skills": ["python", "docker", "aws"],
+                "matched_skills": ["python", "docker", "aws"],
+                "missing_skills": [],
+            }
+        },
+        "logs": ["[TechEvaluator] done"],
+    }
+
+    updated = recruitment_lead_agent(state)
+
+    assert updated["candidate_name"] == "Node Integration Candidate"
+    assert "[TechEvaluator] done" in updated["logs"]
+    assert "final_report" in updated
+    assert isinstance(updated["final_report"], dict)
+    assert "recommendation" in updated["final_report"]
+    assert "report_path" in updated["final_report"]
 
 
 # ============================================================================

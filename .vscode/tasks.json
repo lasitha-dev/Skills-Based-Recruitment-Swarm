@@ -1,0 +1,27 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Cleanup pycache after tests",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"Remove-Item -Force agents\\__pycache__\\*.pyc,tests\\__pycache__\\*.pyc,tools\\__pycache__\\*.pyc"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Cleanup pycache after import fix test",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"Remove-Item -Force tests\\__pycache__\\*.pyc,tools\\__pycache__\\*.pyc,agents\\__pycache__\\*.pyc,__pycache__\\*.pyc"
+			],
+			"isBackground": false
+		}
+	]
+}
