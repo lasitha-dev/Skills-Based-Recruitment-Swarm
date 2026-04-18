@@ -4,9 +4,20 @@ import { JobStatusResponse, getReportDownloadUrl } from "@/lib/api";
 
 interface RecommendationPanelProps {
   job: JobStatusResponse | null;
+  runState: "idle" | "submitting" | "polling" | "completed" | "failed" | "poll-error";
+  pollError: string;
 }
 
-export function RecommendationPanel({ job }: Readonly<RecommendationPanelProps>): JSX.Element {
+export function RecommendationPanel({ job, runState, pollError }: Readonly<RecommendationPanelProps>): JSX.Element {
+  if (runState === "poll-error") {
+    return (
+      <section className="panel recommendation-panel">
+        <h2>Recommendation</h2>
+        <p className="error-box">Status sync interrupted: {pollError || "Polling failed unexpectedly."}</p>
+      </section>
+    );
+  }
+
   if (!job || (job.status !== "completed" && job.status !== "failed")) {
     return (
       <section className="panel recommendation-panel">

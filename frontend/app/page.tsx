@@ -7,9 +7,13 @@ import { RecommendationPanel } from "@/components/RecommendationPanel";
 import { UploadForm } from "@/components/UploadForm";
 import { JobStatusResponse, createJob, getJobStatus } from "@/lib/api";
 
+type RunViewState = "idle" | "submitting" | "polling" | "completed" | "failed" | "poll-error";
+
 export default function HomePage(): JSX.Element {
   const [jobId, setJobId] = useState("");
   const [job, setJob] = useState<JobStatusResponse | null>(null);
+  const [runState, setRunState] = useState<RunViewState>("idle");
+  const [pollError, setPollError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isPolling, setIsPolling] = useState(false);
 
@@ -27,6 +31,9 @@ export default function HomePage(): JSX.Element {
     requiredSkills: string;
   }) => {
     setIsSubmitting(true);
+    setRunState("submitting");
+    setPollError("");
+
     try {
       const created = await createJob(payload);
       setJobId(created.job_id);
@@ -40,6 +47,7 @@ export default function HomePage(): JSX.Element {
         error: "",
         metadata: {},
       });
+      setRunState("polling");
     } finally {
       setIsSubmitting(false);
     }
@@ -47,13 +55,35 @@ export default function HomePage(): JSX.Element {
 
   const handlePoll = useCallback(async (id: string) => {
     setIsPolling(true);
+
     try {
       const status = await getJobStatus(id);
       setJob(status);
+
+      if (status.status === "completed") {
+        setRunState("completed");
+      } else if (status.status === "failed") {
+        setRunState("failed");
+      } else {
+        setRunState("polling");
+      }
+
+      setPollError("");
     } finally {
       setIsPolling(false);
     }
   }, []);
+
+  const handlePollSafe = useCallback(async (id: string) => {
+    try {
+      await handlePoll(id);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to poll job status.";
+      setPollError(message);
+      setRunState("poll-error");
+      throw error;
+    }
+  }, [handlePoll]);
 
   return (
     <main className="app-shell">
@@ -68,10 +98,17 @@ export default function HomePage(): JSX.Element {
 
       <section className="grid-layout">
         <UploadForm onSubmit={handleSubmit} isSubmitting={isSubmitting} />
-        <JobMonitor job={job} jobId={jobId} isPolling={isPolling} onPoll={handlePoll} />
+        <JobMonitor
+          job={job}
+          jobId={jobId}
+          isPolling={isPolling}
+          runState={runState}
+          pollError={pollError}
+          onPoll={handlePollSafe}
+        />
       </section>
 
-      <RecommendationPanel job={job} />
+      <RecommendationPanel job={job} runState={runState} pollError={pollError} />
     </main>
   );
 }

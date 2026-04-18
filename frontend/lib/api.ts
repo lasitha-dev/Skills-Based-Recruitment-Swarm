@@ -16,6 +16,16 @@ export interface JobStatusResponse {
   metadata: Record<string, string>;
 }
 
+export class ApiError extends Error {
+  statusCode: number;
+
+  constructor(message: string, statusCode: number) {
+    super(message);
+    this.name = "ApiError";
+    this.statusCode = statusCode;
+  }
+}
+
 const apiBase =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 
@@ -37,7 +47,7 @@ export async function createJob(input: {
   });
 
   if (!response.ok) {
-    throw new Error(await extractError(response));
+    throw await extractError(response);
   }
 
   return (await response.json()) as JobCreateResponse;
@@ -50,7 +60,7 @@ export async function getJobStatus(jobId: string): Promise<JobStatusResponse> {
   });
 
   if (!response.ok) {
-    throw new Error(await extractError(response));
+    throw await extractError(response);
   }
 
   return (await response.json()) as JobStatusResponse;
@@ -60,14 +70,17 @@ export function getReportDownloadUrl(jobId: string): string {
   return `${apiBase}/api/jobs/${jobId}/report`;
 }
 
-async function extractError(response: Response): Promise<string> {
+async function extractError(response: Response): Promise<ApiError> {
+  const statusCode = response.status;
+
   try {
     const payload = (await response.json()) as { detail?: string };
     if (payload.detail) {
-      return payload.detail;
+      return new ApiError(payload.detail, statusCode);
     }
   } catch {
     // no-op fallback
   }
-  return `Request failed with status ${response.status}`;
+
+  return new ApiError(`Request failed with status ${statusCode}`, statusCode);
 }
