@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { JobStatusResponse, getReportDownloadUrl } from "@/lib/api";
 
 interface RecommendationPanelProps {
