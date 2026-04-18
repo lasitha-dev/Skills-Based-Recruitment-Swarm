@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 
 import { JobMonitor } from "@/components/JobMonitor";
 import { RecommendationPanel } from "@/components/RecommendationPanel";
