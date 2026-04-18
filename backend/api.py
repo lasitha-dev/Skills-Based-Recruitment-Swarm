@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import List
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 from backend.job_store import JobStoreError, ROOT_DIR, load_job_state, save_job_payload, save_job_state, save_upload, utc_now_iso
@@ -23,6 +24,17 @@ ALLOWED_EXTENSIONS = {".pdf", ".docx"}
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
 app = FastAPI(title="MARS Backend Adapter", version="1.0.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 def _parse_required_skills(raw_skills: str) -> List[str]:
