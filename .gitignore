@@ -28,3 +28,7 @@ Thumbs.db
 # Backend runtime artifacts
 data/jobs/
 data/uploads/
+
+# Frontend test artifacts
+frontend/playwright-report/
+frontend/test-results/

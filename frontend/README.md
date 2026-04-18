@@ -37,6 +37,22 @@ Modern UI for uploading resumes and tracking async MARS pipeline runs.
    npm run test:watch
    ```
 
+### Browser E2E (Playwright)
+
+1. Install Playwright browsers:
+   ```bash
+   npm run e2e:install
+   ```
+2. Start backend (`http://127.0.0.1:8000`) and frontend (`http://127.0.0.1:3000`) manually.
+3. Run the real-backend E2E upload flow:
+   ```bash
+   RUN_REAL_BACKEND_E2E=1 npm run e2e
+   ```
+
+Notes:
+- The E2E test uploads a single PDF file and asserts that the UI receives job state.
+- Without `RUN_REAL_BACKEND_E2E=1`, the real-backend spec is skipped by design.
+
 ### What frontend tests cover
 
 - Terminal-state polling stop behavior
