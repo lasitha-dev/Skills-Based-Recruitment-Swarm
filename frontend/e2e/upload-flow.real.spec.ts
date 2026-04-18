@@ -27,4 +27,28 @@ test.describe("real backend upload flow", () => {
     await expect(page.getByText("Job ID:")).toBeVisible();
     await expect(page.locator(".status-badge")).toContainText(/queued|running|completed|failed/i);
   });
+
+  test("accepts single DOCX upload and shows queued/running status", async ({ page, request, baseURL }) => {
+    const healthUrl = `${process.env.E2E_BACKEND_URL ?? "http://127.0.0.1:8000"}/api/health`;
+    const health = await request.get(healthUrl);
+    expect(health.ok()).toBeTruthy();
+
+    await page.goto(baseURL ?? "http://127.0.0.1:3000");
+
+    await page.setInputFiles("#resume", {
+      name: "resume.docx",
+      mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      buffer: Buffer.from("fake docx payload for upload validation"),
+    });
+
+    await page.fill("#candidateName", "Playwright DOCX Candidate");
+    await page.fill("#jobDescription", "Need Java and SQL");
+    await page.fill("#requiredSkills", "Java, SQL");
+
+    await page.getByRole("button", { name: "Start Agentic Evaluation" }).click();
+
+    await expect(page.getByText("Pipeline Status")).toBeVisible();
+    await expect(page.getByText("Job ID:")).toBeVisible();
+    await expect(page.locator(".status-badge")).toContainText(/queued|running|completed|failed/i);
+  });
 });

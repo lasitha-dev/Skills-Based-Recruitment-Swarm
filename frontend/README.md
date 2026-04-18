@@ -50,7 +50,7 @@ Modern UI for uploading resumes and tracking async MARS pipeline runs.
    ```
 
 Notes:
-- The E2E test uploads a single PDF file and asserts that the UI receives job state.
+- The E2E tests upload a single PDF file and a single DOCX file in separate flows, and assert that the UI receives job state.
 - Without `RUN_REAL_BACKEND_E2E=1`, the real-backend spec is skipped by design.
 
 ### What frontend tests cover
