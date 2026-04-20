@@ -288,15 +288,8 @@ def test_strong_hire_report_exists(strong_candidate_state: dict) -> None:
     # Assert
     assert os.path.exists(report_path), f"Report file should exist at {report_path}"
     
-    with open(report_path, 'r', encoding='utf-8') as f:
-        report_content = f.read()
-    
-    assert len(report_content) > 0, "Report should have content"
-    assert "Hiring Recommendation" in report_content, "Report should be markdown report"
-    assert state["candidate_name"] in report_content, (
-        "Report should contain candidate name"
-    )
-    assert STRONG_HIRE in report_content, "Report should contain recommendation"
+    assert report_path.endswith(".pdf"), "Report should be a PDF file"
+    assert os.path.getsize(report_path) > 0, "PDF report should have content"
 
 
 # ============================================================================
@@ -692,16 +685,9 @@ def test_full_workflow_strong_candidate_generates_report(strong_candidate_state:
     report_path = result["report_path"]
     assert os.path.exists(report_path)
     
-    # Verify report content
-    with open(report_path, 'r', encoding='utf-8') as f:
-        content = f.read()
-    
-    # Check for key report sections
-    assert "Hiring Recommendation Report" in content
-    assert candidate_name in content
-    assert "Evaluation Summary" in content
-    assert "Final Recommendation" in content
-    assert STRONG_HIRE in content
+    # Verify report content is a non-empty PDF
+    assert report_path.endswith(".pdf"), "Report should be a PDF file"
+    assert os.path.getsize(report_path) > 0, "PDF report should have content"
 
 
 def test_lead_agent_supports_merged_agent_state_schema() -> None:

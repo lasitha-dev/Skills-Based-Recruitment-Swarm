@@ -230,4 +230,4 @@ def get_job_report(job_id: str) -> FileResponse:
     if not state.report_path or not report_path.exists():
         raise HTTPException(status_code=404, detail="Report file not found.")
 
-    return FileResponse(path=report_path, media_type="text/markdown", filename=report_path.name)
+    return FileResponse(path=report_path, media_type="application/pdf", filename=report_path.name)

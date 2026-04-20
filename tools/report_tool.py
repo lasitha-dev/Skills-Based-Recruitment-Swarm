@@ -1,8 +1,8 @@
 """
-ReportGeneratorTool: Formats and generates hiring recommendation reports.
+ReportGeneratorTool: Formats and generates hiring recommendation PDF reports.
 
 This tool takes recommendation data from Agent 4 (Recruitment Lead) and
-generates a structured markdown report with candidate evaluation details,
+generates a professionally styled PDF report with candidate evaluation details,
 assessment scores, and final hiring recommendation. Reports are saved
 to local files for documentation and audit trails.
 
@@ -12,7 +12,10 @@ Author: G.A. Sandaru (Agent 4: Recruitment Lead)
 import logging
 import os
 from datetime import datetime
+from io import BytesIO
 from typing import Dict, Any, Optional
+
+from xhtml2pdf import pisa
 
 # Configure logging for this module
 logging.basicConfig(
@@ -22,353 +25,490 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# CSS Stylesheet – embedded directly for portability
+# ---------------------------------------------------------------------------
+_REPORT_CSS = """
+@page {
+    size: A4;
+    margin: 2cm 2.5cm;
+    @frame footer {
+        -pdf-frame-content: page-footer;
+        bottom: 0;
+        height: 40px;
+        margin-left: 0;
+        margin-right: 0;
+    }
+}
+
+body {
+    font-family: Helvetica, Arial, sans-serif;
+    font-size: 11px;
+    color: #1a1a2e;
+    line-height: 1.5;
+}
+
+/* ---- Header / Title ---- */
+.report-header {
+    background-color: #0f3460;
+    color: #ffffff;
+    padding: 24px 28px;
+    margin: -10px -10px 20px -10px;
+    border-radius: 4px;
+}
+
+.report-header h1 {
+    font-size: 22px;
+    margin: 0 0 4px 0;
+    letter-spacing: 0.5px;
+}
+
+.report-header .subtitle {
+    font-size: 11px;
+    color: #a4b3cc;
+    margin: 0;
+}
+
+.report-header .generated {
+    font-size: 9px;
+    color: #8899b0;
+    margin: 8px 0 0 0;
+}
+
+/* ---- Section headings ---- */
+h2 {
+    font-size: 15px;
+    color: #0f3460;
+    border-bottom: 2px solid #e94560;
+    padding-bottom: 4px;
+    margin: 20px 0 10px 0;
+}
+
+h3 {
+    font-size: 12px;
+    color: #16213e;
+    margin: 12px 0 6px 0;
+}
+
+/* ---- Candidate info card ---- */
+.info-card {
+    background-color: #f0f4f8;
+    padding: 14px 18px;
+    border-left: 4px solid #0f3460;
+    margin-bottom: 16px;
+}
+
+.info-card p {
+    margin: 3px 0;
+    font-size: 11px;
+}
+
+.info-card .label {
+    color: #555;
+    font-weight: bold;
+}
+
+/* ---- Score table ---- */
+.score-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 10px 0 16px 0;
+}
+
+.score-table th {
+    background-color: #0f3460;
+    color: #ffffff;
+    text-align: left;
+    padding: 8px 12px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.score-table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid #dce3ea;
+    font-size: 11px;
+}
+
+.score-table tr:nth-child(even) td {
+    background-color: #f8fafc;
+}
+
+.score-good { color: #27ae60; font-weight: bold; }
+.score-moderate { color: #f39c12; font-weight: bold; }
+.score-low { color: #e74c3c; font-weight: bold; }
+
+/* ---- Skills ---- */
+.skill-tag {
+    display: inline-block;
+    background-color: #e8f0fe;
+    color: #0f3460;
+    padding: 3px 10px;
+    margin: 2px 3px;
+    border-radius: 12px;
+    font-size: 10px;
+    font-weight: bold;
+}
+
+.skill-gap-tag {
+    display: inline-block;
+    background-color: #fde8e8;
+    color: #c0392b;
+    padding: 3px 10px;
+    margin: 2px 3px;
+    border-radius: 12px;
+    font-size: 10px;
+    font-weight: bold;
+}
+
+/* ---- Lists ---- */
+ul {
+    padding-left: 18px;
+    margin: 4px 0;
+}
+
+li {
+    margin: 2px 0;
+    font-size: 11px;
+}
+
+/* ---- Recommendation banner ---- */
+.recommendation-box {
+    padding: 16px 20px;
+    margin: 16px 0;
+    border-radius: 4px;
+}
+
+.rec-hire {
+    background-color: #d5f5e3;
+    border-left: 5px solid #27ae60;
+}
+
+.rec-conditional {
+    background-color: #fef9e7;
+    border-left: 5px solid #f39c12;
+}
+
+.rec-not-recommended {
+    background-color: #fde8e8;
+    border-left: 5px solid #e74c3c;
+}
+
+.recommendation-box h3 {
+    margin: 0 0 6px 0;
+    font-size: 14px;
+}
+
+.recommendation-box p {
+    margin: 4px 0;
+    font-size: 11px;
+}
+
+/* ---- Market benchmarks ---- */
+.benchmark-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 8px 0 12px 0;
+}
+
+.benchmark-table th {
+    background-color: #16213e;
+    color: #fff;
+    text-align: left;
+    padding: 6px 10px;
+    font-size: 10px;
+}
+
+.benchmark-table td {
+    padding: 6px 10px;
+    border-bottom: 1px solid #e0e0e0;
+    font-size: 10px;
+}
+
+/* ---- Footer ---- */
+.footer {
+    text-align: center;
+    font-size: 8px;
+    color: #999;
+    border-top: 1px solid #ddd;
+    padding-top: 6px;
+}
+
+/* ---- Separator ---- */
+hr {
+    border: none;
+    border-top: 1px solid #dce3ea;
+    margin: 14px 0;
+}
+"""
+
+
 def generate_report(recommendation_data: Dict[str, Any]) -> str:
     """
-    Generate a formatted markdown report from recommendation data and save to file.
-
-    This function takes structured recommendation data from Agent 4 and creates
-    a professional markdown report including candidate evaluation, scores,
-    assessment details, and final hiring recommendation. The report is saved
-    to the local 'data/' directory with a timestamped filename.
+    Generate a styled PDF report from recommendation data and save to file.
 
     Args:
         recommendation_data: Dictionary containing recommendation details.
-            Expected keys:
-                - candidate_name (str): Full name of the candidate
-                - recommendation (str): Final recommendation label
-                - recommendation_reason (str): Explanation for recommendation
-                - strength_score (float): Resume/profile strength score (0.0-1.0)
-                - technical_score (float): Technical evaluation score (0.0-1.0)
-                - market_fit_score (float): Market fit score (0.0-1.0)
-                - experience_years (int): Years of professional experience
-                - skills (list, optional): List of key skills
-                - education (str, optional): Education background
-                - salary_range (str, optional): Expected salary range
-                - market_benchmarks (dict, optional): Market data benchmarks
-                - interview_performance (dict, optional): Interview details
-                - skill_gaps (list, optional): Missing/weak skills
 
     Returns:
-        str: Absolute path to the saved report file.
+        str: Absolute path to the saved PDF report file.
 
     Raises:
-        ValueError: If required fields (candidate_name, recommendation) are missing.
+        ValueError: If required fields are missing.
         IOError: If report file cannot be written.
-        KeyError: If recommendation_data structure is invalid.
-
-    Example:
-        >>> data = {
-        ...     "candidate_name": "Alice Smith",
-        ...     "recommendation": "Strong Hire",
-        ...     "recommendation_reason": "Excellent technical skills and experience.",
-        ...     "strength_score": 0.85,
-        ...     "technical_score": 0.9,
-        ...     "market_fit_score": 0.8,
-        ...     "experience_years": 7,
-        ...     "skills": ["Python", "SQL", "Docker"]
-        ... }
-        >>> report_path = generate_report(data)
-        >>> print(f"Report saved to: {report_path}")
     """
-    logger.info("Starting report generation process")
-    
-    # Validate required fields
+    logger.info("Starting PDF report generation process")
+
     if not isinstance(recommendation_data, dict):
-        logger.error(f"Invalid recommendation_data type: {type(recommendation_data)}")
         raise ValueError("recommendation_data must be a dictionary")
-    
+
     candidate_name = recommendation_data.get("candidate_name")
     recommendation = recommendation_data.get("recommendation")
-    
+
     if not candidate_name:
-        logger.error("Missing required field: candidate_name")
         raise ValueError("recommendation_data must contain 'candidate_name'")
-    
     if not recommendation:
-        logger.error("Missing required field: recommendation")
         raise ValueError("recommendation_data must contain 'recommendation'")
-    
-    logger.info(f"Generating report for candidate: {candidate_name}")
-    
+
+    logger.info(f"Generating PDF report for candidate: {candidate_name}")
+
     try:
-        # Build markdown report
-        report_content = _build_report_markdown(recommendation_data)
-        
-        # Save report to file
-        report_path = _save_report_to_file(candidate_name, report_content)
-        
-        logger.info(f"Report successfully generated and saved to: {report_path}")
+        html_content = _build_report_html(recommendation_data)
+        report_path = _save_report_as_pdf(candidate_name, html_content)
+        logger.info(f"PDF report saved to: {report_path}")
         return report_path
-        
     except IOError as e:
         logger.error(f"IO error while generating report: {e}")
-        raise IOError(f"Failed to write report file: {e}") from e
+        raise
     except Exception as e:
         logger.error(f"Unexpected error during report generation: {e}")
         raise
 
 
-def _build_report_markdown(recommendation_data: Dict[str, Any]) -> str:
-    """
-    Build the markdown content for the hiring recommendation report.
-
-    Constructs a well-formatted markdown report with all evaluation details
-    from the recommendation data. Handles missing fields gracefully by
-    omitting sections when data is not available.
-
-    Args:
-        recommendation_data: Dictionary with candidate evaluation data.
-
-    Returns:
-        str: Complete markdown report content.
-    """
-    logger.debug("Building markdown report content")
-    
-    # Extract data with safe defaults
-    candidate_name: str = recommendation_data.get("candidate_name", "Unknown Candidate")
-    recommendation: str = recommendation_data.get("recommendation", "Pending Review")
-    recommendation_reason: str = recommendation_data.get(
-        "recommendation_reason",
-        "No reasoning provided."
-    )
-    strength_score: Optional[float] = recommendation_data.get("strength_score")
-    technical_score: Optional[float] = recommendation_data.get("technical_score")
-    market_fit_score: Optional[float] = recommendation_data.get("market_fit_score")
-    experience_years: Optional[int] = recommendation_data.get("experience_years")
-    skills: Optional[list] = recommendation_data.get("skills", [])
-    education: Optional[str] = recommendation_data.get("education")
-    salary_range: Optional[str] = recommendation_data.get("salary_range")
-    market_benchmarks: Optional[dict] = recommendation_data.get("market_benchmarks")
-    interview_performance: Optional[dict] = recommendation_data.get("interview_performance")
-    skill_gaps: Optional[list] = recommendation_data.get("skill_gaps", [])
-    
-    # Start building report
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    report_lines = [
-        "# Hiring Recommendation Report",
-        "",
-        f"**Generated:** {timestamp}",
-        "",
-        "---",
-        "",
-    ]
-    
-    # Candidate Information Section
-    report_lines.extend([
-        "## Candidate Information",
-        "",
-        f"**Name:** {candidate_name}",
-    ])
-    
-    if experience_years is not None:
-        report_lines.append(f"**Experience:** {experience_years} years")
-    
-    if education:
-        report_lines.append(f"**Education:** {education}")
-    
-    report_lines.append("")
-    
-    # Skills Section
-    if skills:
-        report_lines.extend([
-            "### Key Skills",
-            ""
-        ])
-        for skill in skills:
-            report_lines.append(f"- {skill}")
-        report_lines.append("")
-    
-    report_lines.append("---")
-    report_lines.append("")
-    
-    # Evaluation Scores Section
-    report_lines.extend([
-        "## Evaluation Summary",
-        ""
-    ])
-    
-    if strength_score is not None:
-        strength_pct = _format_score_percentage(strength_score)
-        report_lines.append(f"**Resume Strength Score:** {strength_pct}")
-    
-    if technical_score is not None:
-        technical_pct = _format_score_percentage(technical_score)
-        report_lines.append(f"**Technical Skills Score:** {technical_pct}")
-    
-    if market_fit_score is not None:
-        market_pct = _format_score_percentage(market_fit_score)
-        report_lines.append(f"**Market Fit Score:** {market_pct}")
-    
-    report_lines.append("")
-    
-    # Market Benchmarks Section
-    if market_benchmarks:
-        report_lines.extend([
-            "### Market Benchmarks",
-            ""
-        ])
-        
-        salary_bench = market_benchmarks.get("salary_range")
-        if salary_bench:
-            report_lines.append(f"- **Salary Range:** {salary_bench}")
-        
-        demand = market_benchmarks.get("role_demand")
-        if demand:
-            report_lines.append(f"- **Role Demand:** {demand}")
-        
-        trend = market_benchmarks.get("market_trend")
-        if trend:
-            report_lines.append(f"- **Market Trend:** {trend}")
-        
-        report_lines.append("")
-    
-    # Interview Performance Section
-    if interview_performance:
-        report_lines.extend([
-            "### Interview Performance",
-            ""
-        ])
-        
-        questions_answered = interview_performance.get("questions_answered")
-        total_questions = interview_performance.get("total_questions")
-        if questions_answered is not None and total_questions is not None:
-            report_lines.append(
-                f"- **Questions Answered:** {questions_answered}/{total_questions}"
-            )
-        
-        response_quality = interview_performance.get("response_quality")
-        if response_quality:
-            report_lines.append(f"- **Response Quality:** {response_quality}")
-        
-        notes = interview_performance.get("notes")
-        if notes:
-            report_lines.append(f"- **Interviewer Notes:** {notes}")
-        
-        report_lines.append("")
-    
-    # Skill Gaps Section
-    if skill_gaps:
-        report_lines.extend([
-            "### Skill Gaps / Development Areas",
-            ""
-        ])
-        for gap in skill_gaps:
-            report_lines.append(f"- {gap}")
-        report_lines.append("")
-    
-    if salary_range and not market_benchmarks:
-        report_lines.extend([
-            f"**Candidate Expected Salary:** {salary_range}",
-            ""
-        ])
-    
-    report_lines.append("---")
-    report_lines.append("")
-    
-    # Final Recommendation Section
-    report_lines.extend([
-        "## Final Recommendation",
-        "",
-        f"### **Decision: {recommendation}**",
-        "",
-        f"**Reasoning:** {recommendation_reason}",
-        "",
-    ])
-    
-    # Footer
-    report_lines.extend([
-        "---",
-        "",
-        "*This report was generated by the Multi-Agent Recruitment Swarm (MARS).*",
-        "*For questions or appeals, contact the HR department.*",
-    ])
-    
-    markdown_report = "\n".join(report_lines)
-    logger.debug("Markdown report content built successfully")
-    
-    return markdown_report
+def _score_css_class(score: Optional[float]) -> str:
+    """Return a CSS class based on score value."""
+    if score is None:
+        return ""
+    if score >= 0.7:
+        return "score-good"
+    if score >= 0.4:
+        return "score-moderate"
+    return "score-low"
 
 
-def _format_score_percentage(score: Optional[float]) -> str:
-    """
-    Format a numerical score (0.0-1.0) as a percentage string.
-
-    Args:
-        score: Score value between 0.0 and 1.0.
-
-    Returns:
-        str: Formatted percentage (e.g., "85.0%") or "N/A" if score is None.
-    """
+def _format_pct(score: Optional[float]) -> str:
+    """Format score as percentage string."""
     if score is None:
         return "N/A"
-    
     try:
-        score_float = float(score)
-        percentage = score_float * 100
-        return f"{percentage:.1f}%"
+        return f"{float(score) * 100:.1f}%"
     except (ValueError, TypeError):
-        logger.warning(f"Could not format score: {score}")
         return "N/A"
 
 
-def _save_report_to_file(candidate_name: str, report_content: str) -> str:
-    """
-    Save the markdown report to a timestamped file in the data directory.
+def _recommendation_css_class(rec: str) -> str:
+    """Map recommendation label to CSS class."""
+    rec_lower = rec.lower()
+    if "not" in rec_lower or "reject" in rec_lower:
+        return "rec-not-recommended"
+    if "conditional" in rec_lower or "maybe" in rec_lower or "consider" in rec_lower:
+        return "rec-conditional"
+    return "rec-hire"
 
-    Creates the 'data/reports/' directory if it doesn't exist, then saves
-    the report with a timestamped filename for easy organization and retrieval.
+
+def _build_report_html(data: Dict[str, Any]) -> str:
+    """Build complete HTML document for the report."""
+
+    candidate_name = data.get("candidate_name", "Unknown Candidate")
+    recommendation = data.get("recommendation", "Pending Review")
+    reason = data.get("recommendation_reason", "No reasoning provided.")
+    strength_score = data.get("strength_score")
+    technical_score = data.get("technical_score")
+    market_fit_score = data.get("market_fit_score")
+    experience_years = data.get("experience_years")
+    skills = data.get("skills", [])
+    education = data.get("education")
+    salary_range = data.get("salary_range")
+    market_benchmarks = data.get("market_benchmarks")
+    interview_performance = data.get("interview_performance")
+    skill_gaps = data.get("skill_gaps", [])
+
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # --- Build skills HTML ---
+    skills_html = ""
+    if skills:
+        skills_html = "<h3>Key Skills</h3><div>"
+        for s in skills:
+            skills_html += f'<span class="skill-tag">{_esc(str(s))}</span> '
+        skills_html += "</div>"
+
+    # --- Build scores table ---
+    scores_rows = ""
+    score_items = [
+        ("Resume Strength", strength_score),
+        ("Technical Skills", technical_score),
+        ("Market Fit", market_fit_score),
+    ]
+    for label, val in score_items:
+        pct = _format_pct(val)
+        css = _score_css_class(val)
+        scores_rows += f'<tr><td>{label}</td><td class="{css}">{pct}</td></tr>\n'
+
+    # --- Build market benchmarks ---
+    market_html = ""
+    if market_benchmarks:
+        market_html = "<h3>Market Benchmarks</h3><table class='benchmark-table'>"
+        market_html += "<tr><th>Metric</th><th>Value</th></tr>"
+        sr = market_benchmarks.get("salary_range")
+        if sr:
+            market_html += f"<tr><td>Salary Range</td><td>{_esc(str(sr))}</td></tr>"
+        demand = market_benchmarks.get("role_demand")
+        if demand:
+            market_html += f"<tr><td>Role Demand</td><td>{_esc(str(demand))}</td></tr>"
+        trend = market_benchmarks.get("market_trend")
+        if trend:
+            market_html += f"<tr><td>Market Trend</td><td>{_esc(str(trend))}</td></tr>"
+        market_html += "</table>"
+
+    # --- Build interview performance ---
+    interview_html = ""
+    if interview_performance:
+        interview_html = "<h3>Interview Performance</h3><ul>"
+        qa = interview_performance.get("questions_answered")
+        total = interview_performance.get("total_questions")
+        if qa is not None and total is not None:
+            interview_html += f"<li><strong>Questions Answered:</strong> {qa}/{total}</li>"
+        quality = interview_performance.get("response_quality")
+        if quality:
+            interview_html += f"<li><strong>Response Quality:</strong> {_esc(str(quality))}</li>"
+        notes = interview_performance.get("notes")
+        if notes:
+            interview_html += f"<li><strong>Interviewer Notes:</strong> {_esc(str(notes))}</li>"
+        interview_html += "</ul>"
+
+    # --- Skill gaps ---
+    gaps_html = ""
+    if skill_gaps:
+        gaps_html = "<h3>Skill Gaps / Development Areas</h3><div>"
+        for g in skill_gaps:
+            gaps_html += f'<span class="skill-gap-tag">{_esc(str(g))}</span> '
+        gaps_html += "</div>"
+
+    # --- Recommendation banner ---
+    rec_css = _recommendation_css_class(recommendation)
+
+    # --- Compose full HTML ---
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<style>
+{_REPORT_CSS}
+</style>
+</head>
+<body>
+    <!-- Header -->
+    <div class="report-header">
+        <h1>Hiring Recommendation Report</h1>
+        <p class="subtitle">Multi-Agent Recruitment Swarm (MARS)</p>
+        <p class="generated">Generated: {timestamp}</p>
+    </div>
+
+    <!-- Candidate Information -->
+    <h2>Candidate Information</h2>
+    <div class="info-card">
+        <p><span class="label">Name:</span> {_esc(candidate_name)}</p>
+        {f'<p><span class="label">Experience:</span> {experience_years} years</p>' if experience_years is not None else ''}
+        {f'<p><span class="label">Education:</span> {_esc(str(education))}</p>' if education else ''}
+        {f'<p><span class="label">Expected Salary:</span> {_esc(str(salary_range))}</p>' if salary_range else ''}
+    </div>
+
+    {skills_html}
+
+    <!-- Evaluation Scores -->
+    <h2>Evaluation Summary</h2>
+    <table class="score-table">
+        <tr>
+            <th>Assessment Area</th>
+            <th>Score</th>
+        </tr>
+        {scores_rows}
+    </table>
+
+    {market_html}
+    {interview_html}
+    {gaps_html}
+
+    <hr/>
+
+    <!-- Final Recommendation -->
+    <h2>Final Recommendation</h2>
+    <div class="recommendation-box {rec_css}">
+        <h3>Decision: {_esc(recommendation)}</h3>
+        <p><strong>Reasoning:</strong> {_esc(reason)}</p>
+    </div>
+
+    <!-- Footer -->
+    <div id="page-footer" class="footer">
+        <p>This report was generated by the Multi-Agent Recruitment Swarm (MARS) &bull; For questions or appeals, contact the HR department.</p>
+    </div>
+</body>
+</html>"""
+
+    return html
+
+
+def _esc(text: str) -> str:
+    """Escape HTML special characters."""
+    return (
+        text.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
+
+
+def _save_report_as_pdf(candidate_name: str, html_content: str) -> str:
+    """Convert HTML to PDF and save to the data/reports directory.
 
     Args:
         candidate_name: Name of the candidate (used in filename).
-        report_content: The markdown report content to save.
+        html_content: The complete HTML string of the report.
 
     Returns:
-        str: Absolute path to the saved report file.
-
-    Raises:
-        IOError: If the file cannot be written.
+        str: Absolute path to the saved PDF file.
     """
-    logger.debug(f"Preparing to save report for candidate: {candidate_name}")
-    
-    try:
-        # Ensure data/reports directory exists (use absolute path for robustness)
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        reports_dir = os.path.join(project_root, "data", "reports")
-        os.makedirs(reports_dir, exist_ok=True)
-        logger.debug(f"Reports directory ensured: {reports_dir}")
-        
-        # Create filename with timestamp
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        # Sanitize candidate name for filename (remove special characters)
-        safe_name = "".join(c if c.isalnum() or c in (' ', '_', '-') else '_' 
-                           for c in candidate_name)
-        safe_name = safe_name.replace(" ", "_")
-        
-        filename = f"recommendation_{safe_name}_{timestamp}.md"
-        filepath = os.path.join(reports_dir, filename)
-        
-        # Write report to file
-        with open(filepath, 'w', encoding='utf-8') as report_file:
-            report_file.write(report_content)
-        
-        # Verify file was written
-        if not os.path.exists(filepath):
-            raise IOError(f"Report file was not created: {filepath}")
-        
-        file_size = os.path.getsize(filepath)
-        logger.info(
-            f"Report successfully saved to: {filepath} ({file_size} bytes)"
-        )
-        
-        return os.path.abspath(filepath)
-        
-    except OSError as e:
-        logger.error(f"OS error while saving report: {e}")
-        raise IOError(f"Failed to save report file: {e}") from e
-    except Exception as e:
-        logger.error(f"Unexpected error while saving report: {e}")
-        raise IOError(f"Unexpected error during file save: {e}") from e
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    reports_dir = os.path.join(project_root, "data", "reports")
+    os.makedirs(reports_dir, exist_ok=True)
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    safe_name = "".join(
+        c if c.isalnum() or c in (" ", "_", "-") else "_" for c in candidate_name
+    ).replace(" ", "_")
+
+    filename = f"recommendation_{safe_name}_{timestamp}.pdf"
+    filepath = os.path.join(reports_dir, filename)
+
+    pdf_buffer = BytesIO()
+    pisa_status = pisa.CreatePDF(html_content, dest=pdf_buffer, encoding="utf-8")
+
+    if pisa_status.err:
+        raise IOError(f"xhtml2pdf returned errors while generating PDF: {pisa_status.err}")
+
+    with open(filepath, "wb") as f:
+        f.write(pdf_buffer.getvalue())
+
+    if not os.path.exists(filepath):
+        raise IOError(f"PDF report file was not created: {filepath}")
+
+    file_size = os.path.getsize(filepath)
+    logger.info(f"PDF report saved to: {filepath} ({file_size} bytes)")
+
+    return os.path.abspath(filepath)
 
 
 # Export public interface
-__all__ = ['generate_report']
+__all__ = ["generate_report"]
