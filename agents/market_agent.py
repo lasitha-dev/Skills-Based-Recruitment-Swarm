@@ -10,6 +10,7 @@ output is placed in the shared AgentState for Agent 3 (Tech Evaluator).
 import json
 import logging
 import os
+import re
 from typing import Dict, Any, List
 
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -20,6 +21,30 @@ from tools.market_tool import salary_benchmark_tool
 
 logger = logging.getLogger(__name__)
 OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "phi3")
+
+
+def _parse_int_env(var_name: str, default_value: int, minimum: int) -> int:
+    """Parse integer environment variables with safe fallback.
+
+    Args:
+        var_name: Environment variable name.
+        default_value: Default value used when parsing fails.
+        minimum: Minimum allowed value.
+
+    Returns:
+        Parsed integer with lower bound enforced.
+    """
+    raw_value = os.getenv(var_name, str(default_value))
+    try:
+        parsed = int(raw_value)
+    except (TypeError, ValueError):
+        logger.warning("[MarketScout] Invalid %s='%s'. Using default=%s", var_name, raw_value, default_value)
+        return default_value
+    return max(minimum, parsed)
+
+
+ENABLE_MARKET_LLM_SUMMARY: bool = os.getenv("MARS_ENABLE_MARKET_LLM_SUMMARY", "false").lower() == "true"
+MAX_MARKET_SKILLS_ANALYZED: int = _parse_int_env("MARS_MAX_MARKET_SKILLS", 8, 1)
 
 # ── Market Scout system prompt (defines the agent persona) ──────────────────
 MARKET_SCOUT_SYSTEM_PROMPT: str = """You are the Market Scout agent in a multi-agent recruitment system.
@@ -46,9 +71,144 @@ IMPORTANT: Respond ONLY with a valid JSON object in this exact format (no markdo
     "top_skills": ["<top 3 most valuable skills>"],
     "market_summary": "<2-3 sentence overall assessment>",
     "recommended_salary_range": {"min": <number>, "max": <number>},
-    "reasoning": "<your chain-of-thought reasoning explaining how you arrived at this analysis>"
+    "reasoning": "<1-2 sentence concise justification>"
 }
 """
+
+
+def _normalize_skill(skill: str) -> str:
+    """Normalize incoming skill labels for stable downstream processing.
+
+    Args:
+        skill: Raw skill text.
+
+    Returns:
+        Cleaned skill label.
+    """
+    return re.sub(r"\s+", " ", skill).strip()
+
+
+def _is_skill_candidate(skill: str) -> bool:
+    """Check whether a raw token resembles a concise skill label.
+
+    Args:
+        skill: Skill token to validate.
+
+    Returns:
+        True when token is likely a valid skill.
+    """
+    if not skill:
+        return False
+    if len(skill) > 40:
+        return False
+    if len(skill.split()) > 4:
+        return False
+    return bool(re.search(r"[A-Za-z]", skill))
+
+
+def _select_skills_for_market_analysis(found_skills: List[str], required_skills: List[str]) -> List[str]:
+    """Prioritize and cap skills to keep market analysis bounded and fast.
+
+    Args:
+        found_skills: Parsed candidate skills from Agent 1.
+        required_skills: Explicit required skills from user input.
+
+    Returns:
+        Ordered, deduplicated, capped skill list.
+    """
+    selected: List[str] = []
+    seen: set[str] = set()
+
+    def _append_skills(skills: List[str]) -> None:
+        for raw_skill in skills:
+            skill = _normalize_skill(raw_skill)
+            key = skill.lower()
+            if not _is_skill_candidate(skill) or key in seen:
+                continue
+            seen.add(key)
+            selected.append(skill)
+            if len(selected) >= MAX_MARKET_SKILLS_ANALYZED:
+                return
+
+    _append_skills(required_skills)
+    if len(selected) < MAX_MARKET_SKILLS_ANALYZED:
+        _append_skills(found_skills)
+
+    return selected[:MAX_MARKET_SKILLS_ANALYZED]
+
+
+def _build_rule_based_analysis(
+    benchmark_data: Dict[str, Any],
+    trends: Dict[str, str],
+    skills: List[str],
+) -> Dict[str, Any]:
+    """Build a deterministic market summary without LLM calls.
+
+    Args:
+        benchmark_data: Skill benchmark payload from tool output.
+        trends: Classified trend labels.
+        skills: Skills analyzed.
+
+    Returns:
+        Structured summary compatible with downstream consumers.
+    """
+    demand_score = {
+        "high-demand": 3,
+        "emerging": 2,
+        "low-demand": 1,
+        "unknown": 0,
+    }
+
+    ranked: List[tuple[str, int, int]] = []
+    salary_mins: List[int] = []
+    salary_maxes: List[int] = []
+
+    for skill in skills:
+        item = benchmark_data.get(skill, {})
+        trend = trends.get(skill, "unknown")
+        average = item.get("average") if isinstance(item, dict) else None
+        if isinstance(item, dict):
+            salary_range = item.get("salary_range")
+            if (
+                isinstance(salary_range, list)
+                and len(salary_range) == 2
+                and all(isinstance(v, int) for v in salary_range)
+            ):
+                salary_mins.append(salary_range[0])
+                salary_maxes.append(salary_range[1])
+        ranked.append((skill, demand_score.get(trend, 0), int(average) if isinstance(average, (int, float)) else 0))
+
+    ranked.sort(key=lambda row: (row[1], row[2]), reverse=True)
+    top_skills = [row[0] for row in ranked[:3]]
+
+    if salary_mins and salary_maxes:
+        recommended_min = int(sum(salary_mins) / len(salary_mins))
+        recommended_max = int(sum(salary_maxes) / len(salary_maxes))
+    else:
+        recommended_min, recommended_max = 60000, 100000
+
+    skill_analyses = [
+        {
+            "skill": skill,
+            "category": trends.get(skill, "unknown"),
+            "insight": f"{skill} is currently categorized as {trends.get(skill, 'unknown')} in the benchmark.",
+        }
+        for skill in skills
+    ]
+
+    high_count = sum(1 for trend in trends.values() if trend == "high-demand")
+    market_summary = (
+        f"Analyzed {len(skills)} skills with {high_count} high-demand indicators. "
+        f"Top market strengths are {', '.join(top_skills) if top_skills else 'not available'}."
+    )
+
+    return {
+        "skill_analyses": skill_analyses,
+        "top_skills": top_skills,
+        "market_summary": market_summary,
+        "recommended_salary_range": {"min": recommended_min, "max": recommended_max},
+        "reasoning": "Rule-based market summary generated from benchmark trends and salary ranges.",
+    }
 
 
 def _invoke_llm_analysis(
@@ -75,7 +235,8 @@ def _invoke_llm_analysis(
     llm = ChatOllama(
         model=OLLAMA_MODEL,
         temperature=0.3,
-        base_url="http://localhost:11434"
+        base_url="http://localhost:11434",
+        timeout=60,
     )
 
     human_prompt = f"""Analyze the following market data for a job candidate's skills.
@@ -174,6 +335,7 @@ def market_scout_agent(state: AgentState) -> AgentState:
 
     # ── Step 1: Skill Intake ────────────────────────────────────────────────
     skills: List[str] = state.get("found_skills", [])
+    required_skills: List[str] = state.get("required_skills", [])
 
     if not skills:
         logs.append("[MarketScout] No skills found in state. Skipping market analysis.")
@@ -189,13 +351,30 @@ def market_scout_agent(state: AgentState) -> AgentState:
             "logs": logs,
         }
 
+    selected_skills = _select_skills_for_market_analysis(skills, required_skills)
+    if not selected_skills:
+        logs.append("[MarketScout] No valid skill tokens after normalization. Skipping market analysis.")
+        return {
+            **state,
+            "market_data": {
+                "benchmark_data": {},
+                "trends": {},
+                "llm_analysis": {},
+                "skills_analyzed": []
+            },
+            "logs": logs,
+        }
+
     logs.append(f"[MarketScout] Skills received from Agent 1: {skills}")
-    logger.info("[MarketScout] Skills to analyze: %s", skills)
+    logs.append(
+        f"[MarketScout] Selected {len(selected_skills)} skills for market analysis (cap={MAX_MARKET_SKILLS_ANALYZED})."
+    )
+    logger.info("[MarketScout] Skills to analyze: %s", selected_skills)
 
     # ── Step 2: Market Benchmarking (SalaryBenchmarkTool) ───────────────────
     benchmark_data: Dict[str, Any] = {}
     try:
-        benchmark_data = salary_benchmark_tool.invoke({"skills": skills})
+        benchmark_data = salary_benchmark_tool.invoke({"skills": selected_skills})
         logs.append(f"[MarketScout] SalaryBenchmarkTool returned data for {len(benchmark_data)} skills.")
         logger.info("[MarketScout] Benchmark data fetched for %d skills.", len(benchmark_data))
     except FileNotFoundError:
@@ -203,14 +382,14 @@ def market_scout_agent(state: AgentState) -> AgentState:
         logger.error("[MarketScout] Salary benchmark data file not found.")
         benchmark_data = {
             skill: {"salary_range": None, "average": None, "demand": "unknown"}
-            for skill in skills
+            for skill in selected_skills
         }
     except Exception as e:
         logs.append(f"[MarketScout] ERROR fetching market data: {e}")
         logger.error("[MarketScout] Unexpected error fetching market data: %s", e)
         benchmark_data = {
             skill: {"salary_range": None, "average": None, "demand": "error"}
-            for skill in skills
+            for skill in selected_skills
         }
 
     # ── Step 3: Trend Classification (rule-based) ───────────────────────────
@@ -225,10 +404,14 @@ def market_scout_agent(state: AgentState) -> AgentState:
     # ── Step 4: LLM Chain-of-Thought Analysis (ChatOllama) ──────────────────
     llm_analysis: Dict[str, Any] = {}
     try:
-        llm_analysis = _invoke_llm_analysis(benchmark_data, skills)
-        logs.append(f"[MarketScout] LLM ({OLLAMA_MODEL}) analysis complete.")
-        logs.append(f"[MarketScout] LLM reasoning: {llm_analysis.get('reasoning', 'N/A')}")
-        logger.info("[MarketScout] LLM analysis completed successfully.")
+        if ENABLE_MARKET_LLM_SUMMARY:
+            llm_analysis = _invoke_llm_analysis(benchmark_data, selected_skills)
+            logs.append(f"[MarketScout] LLM ({OLLAMA_MODEL}) analysis complete.")
+            logs.append(f"[MarketScout] LLM reasoning: {llm_analysis.get('reasoning', 'N/A')}")
+            logger.info("[MarketScout] LLM analysis completed successfully.")
+        else:
+            llm_analysis = _build_rule_based_analysis(benchmark_data, trends, selected_skills)
+            logs.append("[MarketScout] Rule-based market summary generated (LLM summary disabled).")
     except Exception as e:
         logs.append(f"[MarketScout] ERROR during LLM analysis: {e}")
         logger.error("[MarketScout] LLM analysis failed: %s", e)
@@ -245,10 +428,10 @@ def market_scout_agent(state: AgentState) -> AgentState:
         "benchmark_data": benchmark_data,
         "trends": trends,
         "llm_analysis": llm_analysis,
-        "skills_analyzed": skills,
+        "skills_analyzed": selected_skills,
     }
 
-    logs.append(f"[MarketScout] Final output structured with {len(skills)} skills analyzed.")
+    logs.append(f"[MarketScout] Final output structured with {len(selected_skills)} skills analyzed.")
     logger.info("[MarketScout] Agent 2 complete. Output keys: %s", list(market_output.keys()))
     logger.info("[MarketScout] ===========================================")
 

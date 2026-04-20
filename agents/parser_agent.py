@@ -224,7 +224,7 @@ def _run_profile_parser(file_path: str, logs: list[str]) -> tuple[str, ProfileDa
 	)
 
 	try:
-		llm = ChatOllama(model=OLLAMA_MODEL, base_url="http://localhost:11434")
+		llm = ChatOllama(model=OLLAMA_MODEL, base_url="http://localhost:11434", timeout=120)
 		response = llm.invoke(
 			[SystemMessage(content=SYSTEM_PROMPT), HumanMessage(content=user_prompt)]
 		)

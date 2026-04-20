@@ -11,6 +11,8 @@ for any skill not in the local dataset.
 
 import json
 import logging
+import os
+import re
 from pathlib import Path
 from typing import List, Dict, Any
 
@@ -35,6 +37,35 @@ Rules:
 - demand: exactly one of "high", "emerging", or "low"
 - Base your estimates on typical US tech industry salary data
 - Respond with ONLY the JSON object, nothing else"""
+
+
+def _parse_int_env(var_name: str, default_value: int, minimum: int) -> int:
+    """Parse integer environment variables with a safe bounded fallback.
+
+    Args:
+        var_name: Name of the environment variable.
+        default_value: Value used when env is missing or invalid.
+        minimum: Minimum accepted value.
+
+    Returns:
+        Parsed integer value with lower bound enforcement.
+    """
+    raw_value = os.getenv(var_name, str(default_value))
+    try:
+        parsed = int(raw_value)
+    except (TypeError, ValueError):
+        logger.warning(
+            "[SalaryBenchmarkTool] Invalid %s='%s'. Using default %s.",
+            var_name,
+            raw_value,
+            default_value,
+        )
+        return default_value
+    return max(minimum, parsed)
+
+
+ENABLE_LLM_FALLBACK: bool = os.getenv("MARS_ENABLE_MARKET_LLM_FALLBACK", "false").lower() == "true"
+MAX_LLM_FALLBACK_SKILLS: int = _parse_int_env("MARS_MAX_MARKET_LLM_FALLBACK_SKILLS", 2, 0)
 
 
 def _load_salary_data() -> Dict[str, Any]:
@@ -96,7 +127,8 @@ def _llm_fallback_estimate(skill: str) -> Dict[str, Any]:
     llm = ChatOllama(
         model="phi3",
         temperature=0.2,
-        base_url="http://localhost:11434"
+        base_url="http://localhost:11434",
+        timeout=60,
     )
 
     messages = [
@@ -138,6 +170,74 @@ def _llm_fallback_estimate(skill: str) -> Dict[str, Any]:
         }
 
 
+def _heuristic_fallback_estimate(skill: str) -> Dict[str, Any]:
+    """Generate a deterministic estimate for unknown skills without LLM calls.
+
+    Args:
+        skill: Skill label that is missing from local benchmark data.
+
+    Returns:
+        Stable heuristic estimate payload.
+    """
+    normalized = skill.lower()
+
+    high_demand_keywords = {
+        "python", "java", "javascript", "typescript", "react", "node", "node.js",
+        "aws", "docker", "kubernetes", "sql", "mongodb", "mysql", "cloud",
+    }
+    low_demand_keywords = {"excel", "word", "powerpoint", "typing", "data entry"}
+
+    demand = "emerging"
+    if any(keyword in normalized for keyword in high_demand_keywords):
+        demand = "high"
+    elif any(keyword in normalized for keyword in low_demand_keywords):
+        demand = "low"
+
+    if demand == "high":
+        salary_range = [90000, 150000]
+    elif demand == "low":
+        salary_range = [45000, 85000]
+    else:
+        salary_range = [70000, 120000]
+
+    average = int((salary_range[0] + salary_range[1]) / 2)
+
+    logger.info(
+        "[SalaryBenchmarkTool] Heuristic fallback for '%s': range=%s, avg=%s, demand=%s",
+        skill,
+        salary_range,
+        average,
+        demand,
+    )
+
+    return {
+        "salary_range": salary_range,
+        "average": average,
+        "demand": demand,
+        "source": "heuristic_fallback",
+    }
+
+
+def _resolve_unknown_skill(skill: str, llm_fallback_count: int) -> tuple[Dict[str, Any], int]:
+    """Resolve market data for unknown skills with bounded optional LLM fallback.
+
+    Args:
+        skill: Unknown skill token.
+        llm_fallback_count: Current count of used LLM fallback calls.
+
+    Returns:
+        Tuple of (resolved market payload, updated LLM fallback count).
+    """
+    if ENABLE_LLM_FALLBACK and llm_fallback_count < MAX_LLM_FALLBACK_SKILLS:
+        try:
+            llm_result = _llm_fallback_estimate(skill)
+            return llm_result, llm_fallback_count + 1
+        except Exception as error:
+            logger.error("[SalaryBenchmarkTool] LLM fallback failed for '%s': %s", skill, error)
+
+    return _heuristic_fallback_estimate(skill), llm_fallback_count
+
+
 @tool
 def salary_benchmark_tool(skills: List[str]) -> Dict[str, Any]:
     """Fetch salary ranges, average compensation, and demand indicators for each skill.
@@ -173,28 +273,22 @@ def salary_benchmark_tool(skills: List[str]) -> Dict[str, Any]:
         logger.error("[SalaryBenchmarkTool] Invalid JSON in data file: %s", e)
         raise
 
+    llm_fallback_count = 0
     for skill in skills:
+        cleaned_skill = re.sub(r"\s+", " ", skill).strip()
+        if not cleaned_skill:
+            continue
+
         # Step 1: Try local dataset
-        local_result = _lookup_skill(skill, salary_data)
+        local_result = _lookup_skill(cleaned_skill, salary_data)
 
         if local_result is not None:
-            results[skill] = {**local_result, "source": "local_dataset"}
-            logger.info("[SalaryBenchmarkTool] Found '%s' in local dataset.", skill)
+            results[cleaned_skill] = {**local_result, "source": "local_dataset"}
+            logger.info("[SalaryBenchmarkTool] Found '%s' in local dataset.", cleaned_skill)
         else:
-            # Step 2: Fallback to LLM estimation
-            try:
-                llm_result = _llm_fallback_estimate(skill)
-                results[skill] = llm_result
-            except Exception as e:
-                logger.error(
-                    "[SalaryBenchmarkTool] LLM fallback failed for '%s': %s", skill, e
-                )
-                results[skill] = {
-                    "salary_range": None,
-                    "average": None,
-                    "demand": "unknown",
-                    "source": "error"
-                }
+            # Step 2: Resolve unknown skill with optional bounded LLM fallback.
+            resolved, llm_fallback_count = _resolve_unknown_skill(cleaned_skill, llm_fallback_count)
+            results[cleaned_skill] = resolved
 
     logger.info("[SalaryBenchmarkTool] Benchmark results for %d skills complete.", len(results))
     return results

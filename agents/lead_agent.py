@@ -246,7 +246,7 @@ def _derive_strength_score(parsed_resume: Dict[str, Any]) -> Optional[float]:
     Returns:
         Float in range [0.0, 1.0] or None when insufficient data exists.
     """
-    years = parsed_resume.get("experience_years")
+    years = parsed_resume.get("experience_years") or parsed_resume.get("years_of_experience")
     skills = parsed_resume.get("skills", [])
 
     years_score: Optional[float] = None
@@ -395,7 +395,7 @@ def _extract_scores(
     # Extract experience years (Agent 1)
     experience_years: Optional[int] = None
     try:
-        years = parsed_resume.get("experience_years")
+        years = parsed_resume.get("experience_years") or parsed_resume.get("years_of_experience")
         if years is not None:
             experience_years = int(years)
             if experience_years < 0:
@@ -550,7 +550,7 @@ def _prepare_report_data(
         "strength_score": strength_score,
         "technical_score": technical_score,
         "market_fit_score": market_score,
-        "experience_years": parsed_resume.get("experience_years"),
+        "experience_years": parsed_resume.get("experience_years") or parsed_resume.get("years_of_experience"),
         "skills": parsed_resume.get("skills", []),
         "education": parsed_resume.get("education"),
         "salary_range": market_data.get("salary_range"),
