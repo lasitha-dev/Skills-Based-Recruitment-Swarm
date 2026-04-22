@@ -332,6 +332,7 @@ def _build_report_html(data: Dict[str, Any]) -> str:
     salary_range = data.get("salary_range")
     market_benchmarks = data.get("market_benchmarks")
     interview_performance = data.get("interview_performance")
+    interview_questions = data.get("interview_questions", [])
     skill_gaps = data.get("skill_gaps", [])
 
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -396,6 +397,15 @@ def _build_report_html(data: Dict[str, Any]) -> str:
             gaps_html += f'<span class="skill-gap-tag">{_esc(str(g))}</span> '
         gaps_html += "</div>"
 
+    # --- Targeted interview questions ---
+    questions_html = ""
+    if isinstance(interview_questions, list) and interview_questions:
+        questions_html = "<h3>Targeted Interview Questions</h3><ol>"
+        for question in interview_questions:
+            if isinstance(question, str) and question.strip():
+                questions_html += f"<li>{_esc(question.strip())}</li>"
+        questions_html += "</ol>"
+
     # --- Recommendation banner ---
     rec_css = _recommendation_css_class(recommendation)
 
@@ -440,6 +450,7 @@ def _build_report_html(data: Dict[str, Any]) -> str:
     {market_html}
     {interview_html}
     {gaps_html}
+    {questions_html}
 
     <hr/>
 
