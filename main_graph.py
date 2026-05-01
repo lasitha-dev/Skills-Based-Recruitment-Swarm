@@ -43,6 +43,7 @@ def tech_evaluator_agent(state: AgentState) -> AgentState:
         "job_description": state.get("job_description", ""),
         "found_skills": state.get("found_skills", []),
         "required_skills": state.get("required_skills", []),
+        "market_data": state.get("market_data", {}),
     }
 
     logger.info("[TechEvaluator] Running gap analysis for %d skills.", len(evaluator_input["found_skills"]))

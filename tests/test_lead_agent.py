@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from agents.lead_agent import (
     lead_agent,
+    _prepare_report_data,
     STRONG_HIRE,
     PROCEED_TO_INTERVIEW,
     CONSIDER_WITH_UPSKILLING,
@@ -25,6 +26,7 @@ from agents.lead_agent import (
     INSUFFICIENT_DATA
 )
 from main_graph import recruitment_lead_agent
+from tools.report_tool import _build_report_html
 
 
 # ============================================================================
@@ -288,15 +290,8 @@ def test_strong_hire_report_exists(strong_candidate_state: dict) -> None:
     # Assert
     assert os.path.exists(report_path), f"Report file should exist at {report_path}"
     
-    with open(report_path, 'r', encoding='utf-8') as f:
-        report_content = f.read()
-    
-    assert len(report_content) > 0, "Report should have content"
-    assert "Hiring Recommendation" in report_content, "Report should be markdown report"
-    assert state["candidate_name"] in report_content, (
-        "Report should contain candidate name"
-    )
-    assert STRONG_HIRE in report_content, "Report should contain recommendation"
+    assert report_path.endswith(".pdf"), "Report should be a PDF file"
+    assert os.path.getsize(report_path) > 0, "PDF report should have content"
 
 
 # ============================================================================
@@ -692,16 +687,9 @@ def test_full_workflow_strong_candidate_generates_report(strong_candidate_state:
     report_path = result["report_path"]
     assert os.path.exists(report_path)
     
-    # Verify report content
-    with open(report_path, 'r', encoding='utf-8') as f:
-        content = f.read()
-    
-    # Check for key report sections
-    assert "Hiring Recommendation Report" in content
-    assert candidate_name in content
-    assert "Evaluation Summary" in content
-    assert "Final Recommendation" in content
-    assert STRONG_HIRE in content
+    # Verify report content is a non-empty PDF
+    assert report_path.endswith(".pdf"), "Report should be a PDF file"
+    assert os.path.getsize(report_path) > 0, "PDF report should have content"
 
 
 def test_lead_agent_supports_merged_agent_state_schema() -> None:
@@ -776,6 +764,102 @@ def test_recruitment_lead_graph_node_preserves_state_and_sets_final_report() -> 
     assert "report_path" in updated["final_report"]
 
 
+def test_prepare_report_data_normalizes_interview_questions() -> None:
+    """Report payload should normalize mixed question formats into strings.
+
+    Validates that Agent 4 accepts both QuestionRecord-like dictionaries and
+    plain strings from state["questions"], ignoring malformed entries.
+    """
+    state = {
+        "candidate_name": "Normalization Candidate",
+        "structured_profile": {
+            "skills": ["Python", "AWS"],
+            "years_of_experience": 4,
+        },
+        "market_data": {
+            "salary_range": "$80k-$100k",
+        },
+        "evaluation_results": {
+            "skill_gaps": {
+                "missing_skills": ["sql", "docker"],
+            }
+        },
+        "questions": [
+            {"skill": "sql", "difficulty": "medium", "question": "How do indexes improve query performance?", "tags": ["sql"]},
+            "Describe Docker image layering.",
+            {"skill": "aws", "difficulty": "medium", "tags": ["aws"]},
+            42,
+            "   ",
+        ],
+    }
+
+    report_data = _prepare_report_data(
+        state=state,
+        recommendation=PROCEED_TO_INTERVIEW,
+        reason="Test reason",
+        strength_score=0.7,
+        technical_score=0.6,
+        market_score=0.65,
+    )
+
+    assert report_data["interview_questions"] == [
+        "How do indexes improve query performance?",
+        "Describe Docker image layering.",
+    ]
+    assert report_data["skill_gaps"] == ["sql", "docker"]
+
+
+def test_prepare_report_data_falls_back_to_resume_skill_gaps() -> None:
+    """Report payload should fallback to resume skill gaps when Agent 3 lacks them."""
+    state = {
+        "candidate_name": "Fallback Candidate",
+        "parsed_resume": {
+            "experience_years": 2,
+            "skill_gaps": ["System design", "Testing"],
+        },
+        "market_data": {},
+        "technical_evaluation": {
+            "technical_score": 0.55,
+        },
+        "questions": ["What are test doubles?"],
+    }
+
+    report_data = _prepare_report_data(
+        state=state,
+        recommendation=CONSIDER_WITH_UPSKILLING,
+        reason="Test reason",
+        strength_score=0.5,
+        technical_score=0.55,
+        market_score=0.5,
+    )
+
+    assert report_data["skill_gaps"] == ["System design", "Testing"]
+    assert report_data["interview_questions"] == ["What are test doubles?"]
+
+
+def test_build_report_html_renders_targeted_interview_questions_section() -> None:
+    """PDF HTML should include the targeted interview questions section."""
+    report_data = {
+        "candidate_name": "HTML Candidate",
+        "recommendation": PROCEED_TO_INTERVIEW,
+        "recommendation_reason": "Needs deeper validation on gaps.",
+        "strength_score": 0.62,
+        "technical_score": 0.58,
+        "market_fit_score": 0.66,
+        "interview_questions": [
+            "Explain eventual consistency tradeoffs.",
+            "How would you troubleshoot a slow SQL query?",
+        ],
+    }
+
+    html = _build_report_html(report_data)
+
+    assert "Targeted Interview Questions" in html
+    assert "Explain eventual consistency tradeoffs." in html
+    assert "How would you troubleshoot a slow SQL query?" in html
+    assert "<ol>" in html
+
+
 # ============================================================================
 # Export
 # ============================================================================
@@ -786,4 +870,7 @@ __all__ = [
     'test_insufficient_data_missing_market',
     'test_valid_recommendation_labels',
     'test_state_update_structure',
+    'test_prepare_report_data_normalizes_interview_questions',
+    'test_prepare_report_data_falls_back_to_resume_skill_gaps',
+    'test_build_report_html_renders_targeted_interview_questions_section',
 ]

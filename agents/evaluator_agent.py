@@ -2,16 +2,56 @@
 
 from __future__ import annotations
 
+import json
 import logging
+import os
 import re
 from pathlib import Path
 from typing import Any, NotRequired, TypedDict
+
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_ollama import ChatOllama
 
 from tools.question_tool import QuestionBankError, QuestionBankTool, QuestionRecord
 
 
 LOGGER = logging.getLogger(__name__)
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "phi3")
 
+EVALUATOR_SYSTEM_PROMPT = """
+You are an expert technical lead. Your role is to identify the 'Skill Gaps' between a candidate's profile and a target Job Description. You must use the provided market data to weigh the importance of these gaps.
+
+Your output must strictly be a valid JSON object with the following keys:
+- required_skills: A list of strings representing the skills required by the job description.
+- found_skills: A list of strings representing the skills found in the candidate's profile.
+- matched_skills: A list of strings representing the skills that match between the required and found skills.
+- missing_skills: A list of strings representing the skills required but missing from the candidate's profile, keeping only standard technology names.
+- weighted_gap_summary: A concise string summarizing the most critical missing skills, heavily factored by the provided market data, emphasizing emerging and high-demand skills.
+
+Constraints:
+- Respond ONLY with valid JSON.
+- Do not output any conversational text or markdown formatting outside the JSON block.
+- Base your missing_skills solely on identifying the difference between the required_skills (derived primarily from the job description) and found_skills.
+"""
+
+def _extract_json_object(text: str) -> dict[str, Any]:
+	"""Extract the first JSON object from a model response string."""
+	stripped = text.strip()
+	try:
+		parsed = json.loads(stripped)
+		if isinstance(parsed, dict):
+			return parsed
+	except json.JSONDecodeError:
+		pass
+
+	match = re.search(r"\{[\s\S]*\}", stripped)
+	if not match:
+		raise ValueError("No JSON object found in model output.")
+
+	parsed_obj = json.loads(match.group(0))
+	if not isinstance(parsed_obj, dict):
+		raise ValueError("Model output JSON was not an object.")
+	return parsed_obj
 
 class SkillGapReport(TypedDict):
 	"""Structured evaluator output for skill-gap analysis."""
@@ -28,6 +68,7 @@ class EvaluatorState(TypedDict, total=False):
 	job_description: str
 	found_skills: list[str]
 	required_skills: list[str]
+	market_data: dict[str, Any]
 	skill_gaps: SkillGapReport
 	evaluation_questions: list[QuestionRecord]
 	evaluation_summary: str
@@ -107,18 +148,35 @@ def evaluate_candidate(
 	found_skills: list[str] = _dedupe_lower(state.get("found_skills", []))
 	explicit_required: list[str] = state.get("required_skills", [])
 	job_description: str = state.get("job_description", "")
+	market_data: dict[str, Any] = state.get("market_data", {})
 
 	try:
-		all_records: list[QuestionRecord] = tool.load_question_bank()
-		catalog: list[str] = [record["skill"] for record in all_records]
-		required_skills: list[str] = _extract_required_skills(
-			job_description=job_description,
-			explicit_required=explicit_required,
-			available_skill_catalog=catalog,
+		# Use LLM with market data to identify gaps and prioritize them
+		llm = ChatOllama(model=OLLAMA_MODEL, temperature=0.1)
+
+		prompt = (
+			f"Job Description: {job_description}\n"
+			f"Explicit Required Skills: {', '.join(explicit_required)}\n"
+			f"Candidate Found Skills: {', '.join(found_skills)}\n"
+			f"Market Data Insights:\n{json.dumps(market_data, indent=2)}\n\n"
+			"Please output the valid JSON object with the required keys."
 		)
 
-		matched_skills: list[str] = [skill for skill in required_skills if skill in found_skills]
-		missing_skills: list[str] = [skill for skill in required_skills if skill not in found_skills]
+		messages = [
+			SystemMessage(content=EVALUATOR_SYSTEM_PROMPT),
+			HumanMessage(content=prompt),
+		]
+
+		LOGGER.info("Agent 3 invoking LLM for gap analysis")
+		response = llm.invoke(messages)
+		
+		# Parse JSON response
+		llm_json = _extract_json_object(response.content)
+
+		required_skills: list[str] = _dedupe_lower(llm_json.get("required_skills", []))
+		matched_skills: list[str] = _dedupe_lower(llm_json.get("matched_skills", []))
+		missing_skills: list[str] = _dedupe_lower(llm_json.get("missing_skills", []))
+		llm_summary: str = llm_json.get("weighted_gap_summary", "No summary provided.")
 
 		LOGGER.info(
 			"Agent 3 reasoning",
@@ -144,8 +202,7 @@ def evaluate_candidate(
 		questions = questions[:top_k]
 
 		summary: str = (
-			f"Matched {len(matched_skills)} of {len(required_skills)} required skills. "
-			f"Missing: {', '.join(missing_skills) if missing_skills else 'none'}. "
+			f"{llm_summary} "
 			f"Prepared {len(questions)} targeted interview questions."
 		)
 
@@ -161,8 +218,8 @@ def evaluate_candidate(
 			"evaluation_questions": questions,
 			"evaluation_summary": summary,
 		}
-	except QuestionBankError as error:
-		LOGGER.exception("Agent 3 failed while loading/fetching question bank")
+	except Exception as error:
+		LOGGER.exception("Agent 3 failed during gap analysis or fetching questions")
 		return {
 			"skill_gaps": {
 				"required_skills": [],
@@ -171,7 +228,7 @@ def evaluate_candidate(
 				"missing_skills": [],
 			},
 			"evaluation_questions": [],
-			"evaluation_summary": "Evaluator failed to prepare technical questions.",
+			"evaluation_summary": "Evaluator failed unexpectedly.",
 			"evaluation_errors": [str(error)],
 		}
 

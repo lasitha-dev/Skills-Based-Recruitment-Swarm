@@ -246,7 +246,7 @@ def _derive_strength_score(parsed_resume: Dict[str, Any]) -> Optional[float]:
     Returns:
         Float in range [0.0, 1.0] or None when insufficient data exists.
     """
-    years = parsed_resume.get("experience_years")
+    years = parsed_resume.get("experience_years") or parsed_resume.get("years_of_experience")
     skills = parsed_resume.get("skills", [])
 
     years_score: Optional[float] = None
@@ -395,7 +395,7 @@ def _extract_scores(
     # Extract experience years (Agent 1)
     experience_years: Optional[int] = None
     try:
-        years = parsed_resume.get("experience_years")
+        years = parsed_resume.get("experience_years") or parsed_resume.get("years_of_experience")
         if years is not None:
             experience_years = int(years)
             if experience_years < 0:
@@ -413,6 +413,80 @@ def _extract_scores(
     )
     
     return strength_score, technical_score, market_fit_score, experience_years
+
+
+def _normalize_interview_questions(raw_questions: Any) -> Tuple[list[str], int]:
+    """Normalize interview questions from state into plain text entries.
+
+    Supports both legacy ``list[str]`` and Agent 3 ``QuestionRecord`` style
+    entries where each item is a dictionary containing a ``question`` key.
+
+    Args:
+        raw_questions: Value from ``state["questions"]``.
+
+    Returns:
+        Tuple of (normalized_questions, dropped_count) where normalized questions
+        are cleaned non-empty strings preserving source order.
+    """
+    if raw_questions is None:
+        return [], 0
+
+    if not isinstance(raw_questions, list):
+        return [], 1
+
+    normalized: list[str] = []
+    dropped_count = 0
+
+    for item in raw_questions:
+        question_text = ""
+
+        if isinstance(item, str):
+            question_text = item.strip()
+        elif isinstance(item, dict):
+            maybe_question = item.get("question")
+            if isinstance(maybe_question, str):
+                question_text = maybe_question.strip()
+
+        if question_text:
+            normalized.append(question_text)
+        else:
+            dropped_count += 1
+
+    return normalized, dropped_count
+
+
+def _extract_skill_gaps(
+    parsed_resume: Dict[str, Any],
+    technical_eval: Dict[str, Any]
+) -> list[str]:
+    """Extract reportable skill gaps with Agent 3 output as primary source.
+
+    Args:
+        parsed_resume: Resume payload from Agent 1.
+        technical_eval: Technical evaluation payload from Agent 3.
+
+    Returns:
+        Ordered list of human-readable missing skills.
+    """
+    tech_skill_gaps = technical_eval.get("skill_gaps")
+    if isinstance(tech_skill_gaps, dict):
+        missing_skills = tech_skill_gaps.get("missing_skills", [])
+        if isinstance(missing_skills, list):
+            normalized_missing = [
+                skill.strip() for skill in missing_skills
+                if isinstance(skill, str) and skill.strip()
+            ]
+            if normalized_missing:
+                return normalized_missing
+
+    resume_skill_gaps = parsed_resume.get("skill_gaps", [])
+    if isinstance(resume_skill_gaps, list):
+        return [
+            skill.strip() for skill in resume_skill_gaps
+            if isinstance(skill, str) and skill.strip()
+        ]
+
+    return []
 
 
 def _determine_recommendation(
@@ -542,6 +616,18 @@ def _prepare_report_data(
     parsed_resume = parsed_resume_raw or {}
     market_data = market_data_raw or {}
     technical_eval = technical_eval_raw or {}
+    interview_questions, dropped_questions = _normalize_interview_questions(state.get("questions"))
+    skill_gaps = _extract_skill_gaps(parsed_resume, technical_eval)
+
+    logger.info(
+        "Prepared %d interview questions for report generation.",
+        len(interview_questions)
+    )
+    if dropped_questions > 0:
+        logger.warning(
+            "Skipped %d malformed interview question entries while preparing report payload.",
+            dropped_questions
+        )
     
     report_data = {
         "candidate_name": state.get("candidate_name", "Unknown Candidate"),
@@ -550,7 +636,7 @@ def _prepare_report_data(
         "strength_score": strength_score,
         "technical_score": technical_score,
         "market_fit_score": market_score,
-        "experience_years": parsed_resume.get("experience_years"),
+        "experience_years": parsed_resume.get("experience_years") or parsed_resume.get("years_of_experience"),
         "skills": parsed_resume.get("skills", []),
         "education": parsed_resume.get("education"),
         "salary_range": market_data.get("salary_range"),
@@ -565,7 +651,8 @@ def _prepare_report_data(
             "response_quality": technical_eval.get("response_quality"),
             "notes": technical_eval.get("interviewer_notes"),
         } if technical_eval else None,
-        "skill_gaps": parsed_resume.get("skill_gaps", []),
+        "interview_questions": interview_questions,
+        "skill_gaps": skill_gaps,
     }
     
     logger.debug(f"Report data prepared with keys: {list(report_data.keys())}")

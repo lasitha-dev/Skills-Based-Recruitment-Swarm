@@ -1,0 +1,57 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.7, pytest-9.0.3, pluggy-1.6.0 -- C:\Users\lasit\AppData\Local\Programs\Python\Python312\python.exe
+cachedir: .pytest_cache
+rootdir: c:\Users\lasit\OneDrive\Documents\IDEs\VS Code\Recruitment Swarm\Skills-Based-Recruitment-Swarm
+plugins: anyio-3.7.1, langsmith-0.7.30
+collecting ... collected 22 items
+
+tests/test_lead_agent.py::test_strong_hire_recommendation PASSED         [  4%]
+tests/test_lead_agent.py::test_strong_hire_report_exists FAILED          [  9%]
+tests/test_lead_agent.py::test_not_recommended_weak_candidate PASSED     [ 13%]
+tests/test_lead_agent.py::test_proceed_to_interview_mid_tier PASSED      [ 18%]
+tests/test_lead_agent.py::test_consider_with_upskilling_junior PASSED    [ 22%]
+tests/test_lead_agent.py::test_insufficient_data_missing_market PASSED   [ 27%]
+tests/test_lead_agent.py::test_insufficient_data_missing_candidate_name PASSED [ 31%]
+tests/test_lead_agent.py::test_insufficient_data_missing_scores PASSED   [ 36%]
+tests/test_lead_agent.py::test_insufficient_data_empty_state PASSED      [ 40%]
+tests/test_lead_agent.py::test_valid_recommendation_labels PASSED        [ 45%]
+tests/test_lead_agent.py::test_state_update_structure PASSED             [ 50%]
+tests/test_lead_agent.py::test_invalid_state_type PASSED                 [ 54%]
+tests/test_lead_agent.py::test_score_out_of_range PASSED                 [ 59%]
+tests/test_lead_agent.py::test_string_scores_converted_to_float PASSED   [ 63%]
+tests/test_lead_agent.py::test_agent_handles_missing_optional_fields PASSED [ 68%]
+tests/test_lead_agent.py::test_full_workflow_strong_candidate_generates_report FAILED [ 72%]
+tests/test_lead_agent.py::test_lead_agent_supports_merged_agent_state_schema PASSED [ 77%]
+tests/test_lead_agent.py::test_recruitment_lead_graph_node_preserves_state_and_sets_final_report PASSED [ 81%]
+tests/test_backend_api_adapter.py::test_create_job_rejects_unsupported_extension PASSED [ 86%]
+tests/test_backend_api_adapter.py::test_create_job_accepts_pdf_and_queues_job PASSED [ 90%]
+tests/test_backend_api_adapter.py::test_get_job_status_returns_payload PASSED [ 95%]
+tests/test_backend_api_adapter.py::test_get_job_report_returns_409_when_not_completed PASSED [100%]
+
+================================== FAILURES ===================================
+_______________________ test_strong_hire_report_exists ________________________
+tests\test_lead_agent.py:292: in test_strong_hire_report_exists
+    report_content = f.read()
+                     ^^^^^^^^
+<frozen codecs>:322: in decode
+    ???
+E   UnicodeDecodeError: 'utf-8' codec can't decode byte 0x93 in position 10: invalid start byte
+____________ test_full_workflow_strong_candidate_generates_report _____________
+tests\test_lead_agent.py:697: in test_full_workflow_strong_candidate_generates_report
+    content = f.read()
+              ^^^^^^^^
+<frozen codecs>:322: in decode
+    ???
+E   UnicodeDecodeError: 'utf-8' codec can't decode byte 0x93 in position 10: invalid start byte
+============================== warnings summary ===============================
+..\..\..\..\..\..\AppData\Local\Programs\Python\Python312\Lib\site-packages\PyPDF2\__init__.py:21
+  C:\Users\lasit\AppData\Local\Programs\Python\Python312\Lib\site-packages\PyPDF2\__init__.py:21: DeprecationWarning: PyPDF2 is deprecated. Please move to the pypdf library instead.
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_lead_agent.py::test_strong_hire_report_exists - UnicodeDeco...
+FAILED tests/test_lead_agent.py::test_full_workflow_strong_candidate_generates_report
+=================== 2 failed, 20 passed, 1 warning in 3.52s ===================
+
+---STDERR---
